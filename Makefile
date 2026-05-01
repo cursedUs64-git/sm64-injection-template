@@ -65,7 +65,7 @@ INC_C_SRCS := $(patsubst %.png,%.inc.c,$(PNG_SRCS))
 # ----------------------------
 # Flags
 # ----------------------------
-CFLAGS := $(INCLUDE_FLAGS) -O2 -G0 -Wo,-loopunroll,0 -non_shared -Wab,-r4300_mul -Xcpluscomm -signed -32 -nostdinc -DTARGET_N64 -D_LANGUAGE_C -mips2 -w
+CFLAGS := $(INCLUDE_FLAGS) -O2 -G0 -Wo,-loopunroll,0 -non_shared -Wab,-r4300_mul -Xcpluscomm -signed -32 -nostdinc -DTARGET_N64 -D_LANGUAGE_C -mips2 -fullwarn
 ARMIPSFLAGS := -sym $(TMP_DIR)/sym.txt -strequ ROM_IN $(ROM_IN) -strequ ROM_OUT $(ROM_OUT)
 
 # ----------------------------

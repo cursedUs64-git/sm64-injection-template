@@ -1,28 +1,21 @@
 #include "basicheader.h"
 
-// #define _entrySegmentRomStart 0x00108a10
-// #define _entrySegmentRomEnd 0x00108a40
-
 // NOTE: Make changes for these macros if using a compressed ROM as segment addresses may vary.
 
-// comment load_segment and uncomment load_segment_decompress if you want
-// #define _segment2_mio0SegmentRomStart 0x00800000 // pretty confusing but the stub mio0 header does shit idk
-#define _segment2_mio0SegmentRomEnd 0x0081bb64 // align it by 2. it was 81bb63 before. Makes it work on real hardware.
+// comment load_segment and uncomment the other if needed. Might move these defines to armips?
+// #define _segment2_mio0SegmentRomStart 0x00800000 // hacky solution with a mio0 stub header
+#define _segment2_mio0SegmentRomEnd 0x0081bb64
 
 #define _segment2_SegmentRomStart 0x00803156
 #define _segment2_SegmentRomEnd _segment2_mio0SegmentRomEnd
-
-// resolve undefined errors
-extern u16 gZBuffer[];
-extern u16 gFramebuffer0[];
-extern u16 gFramebuffer1[];
-extern u16 gFramebuffer2[];
 
 // addresses resolved by armips, the linker
 extern u8 _entrySegmentRomStart[];
 extern u8 _entrySegmentRomEnd[];
 
-// Basically the vanilla function, except it has changed addresses for load_segment and also calls the custom_load function for more memory.
+extern void custom_loads(void);
+
+// The vanilla function, except it has changed addresses for load_segment and also calls the custom_load function for performing DMA reads.
 void setup_game_memory(void) {
     // UNUSED u8 filler[8]; // save space
 

@@ -1,17 +1,11 @@
 #include "basicheader.h"
+#include "include/segment_symbols.h"
 
 // NOTE: Make changes for these macros if using a compressed ROM as segment addresses may vary.
 
-// comment load_segment and uncomment the other if needed. Might move these defines to armips?
-// #define _segment2_mio0SegmentRomStart 0x00800000 // hacky solution with a mio0 stub header
-#define _segment2_mio0SegmentRomEnd 0x0081bb64
-
+// comment below 2 lines if using non-extended/uncompressed ROM. Also more near the bottom of the file.
+#define _segment2_SegmentRomEnd 0x0081bb64
 #define _segment2_SegmentRomStart 0x00803156
-#define _segment2_SegmentRomEnd _segment2_mio0SegmentRomEnd
-
-// addresses resolved by armips, the linker
-extern u8 _entrySegmentRomStart[];
-extern u8 _entrySegmentRomEnd[];
 
 extern void custom_loads(void);
 
@@ -43,7 +37,8 @@ void setup_game_memory(void) {
     // Setup Segment 2 (Fonts, Text, etc)
 
     // CHANGE START
-    // load_segment_decompress(2, (void *)_segment2_mio0SegmentRomStart, (void *)_segment2_mio0SegmentRomEnd); // uncommented because register A3 is not set
+    // Comment and uncomment either of these based on if you have a compressed or uncompressed ROM.
+    // load_segment_decompress(2, (void *)_segment2_mio0SegmentRomStart, (void *)_segment2_mio0SegmentRomEnd);
     load_segment(2, (void *)_segment2_SegmentRomStart, (void *)_segment2_SegmentRomEnd, MEMORY_POOL_LEFT);
 
     custom_loads();

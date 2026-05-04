@@ -13,7 +13,7 @@
 // The separate load_patchable_table function for mario's animations
 .importobj "obj/custom/mario_anim_load_patchable_table.o"
 
-.headersize 0-orga() // the pointers are relative to the start of the animation because the Animation struct's addressing layout is based on OffsetSizePair struct (see below)
+.headersize 0-orga() // the pointers are relative to the start of the animation because it's dynamic in RAM
 .definelabel @anim_d1_start, orga()
 .importobj "obj/anims/windemoAold.o"
 .definelabel @anim_d1_size, orga()-@anim_d1_start

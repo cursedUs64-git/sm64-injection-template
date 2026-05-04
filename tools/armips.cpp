@@ -9483,7 +9483,7 @@ bool CDirectiveArea::Validate()
 
 	if (areaSize < contentSize)
 	{
-		Logger::queueError(Logger::Error,L"Area overflowed");
+		Logger::queueError(Logger::Error,L"Area at %08x overflowed by %d bytes", position, contentSize - areaSize);
 	}
 
 	if (fillExpression.isLoaded())

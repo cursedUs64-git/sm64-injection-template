@@ -56,6 +56,9 @@
 // src/audio/external.c
 #define MAX_CHANNELS_PER_SOUND_BANK 1
 
+// needed for behaviors
+#define o gCurrentObject
+
 // externs for static stuff
 #include "src.externs.h"
 #include "actors.externs.h"

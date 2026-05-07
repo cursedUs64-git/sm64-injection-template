@@ -21,14 +21,15 @@ def search_rom(file_path, pattern_bytes):
 def main():
     if len(sys.argv) < 4:
         print("Usage:")
-        print("  python search_rom.py <rom> byte <hex bytes>")
-        print("  python search_rom.py <rom> half <0x1234>")
-        print("  python search_rom.py <rom> word <0x12345678>")
+        print("  python search_rom.py <rom> byte <hex bytes> <NONE or address>")
+        print("  python search_rom.py <rom> half <0x1234> <NONE or address>")
+        print("  python search_rom.py <rom> word <0x12345678> <NONE or address>")
         return
 
     rom_path = sys.argv[1]
     mode = sys.argv[2]
     value = sys.argv[3]
+    replace_with_address_pointer = sys.argv[4]
 
     if mode == "byte":
         pattern_bytes = bytes.fromhex(value.replace("0x", ""))
@@ -43,7 +44,12 @@ def main():
     matches = search_rom(rom_path, pattern_bytes)
 
     for addr in matches:
-        print(f".orga 0x{addr:08X} :: /*please insert your changes here*/")
+        if replace_with_address_pointer == "NONE":
+            print(f".orga 0x{addr:08X} :: /*please insert your changes here*/")
+        else:
+            print(f".orga 0x{addr:08X} :: .word {replace_with_address_pointer}")
+
+
 
 if __name__ == "__main__":
     main()

@@ -2,6 +2,17 @@
 // https://github.com/Kingcom/armips/
 // To simplify compilation, all files have been concatenated into one.
 // MIPS only, ARM is not included.
+// Requires C++17 or later.
+#define ARMIPS_USE_STD_FILESYSTEM
+#include <filesystem>
+#include <fstream>
+#include <vector>
+namespace fs {
+    using namespace std::filesystem;
+    using fstream  = std::fstream;
+    using ifstream = std::ifstream;
+    using ofstream = std::ofstream;
+}
 
 /*
 The MIT License (MIT)
@@ -27,48 +38,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 */
-
-// file: stdafx.h
-
-
-#define _CRT_SECURE_NO_WARNINGS
-
-#if defined(__clang__)
-#if __has_feature(cxx_exceptions)
-#define ARMIPS_EXCEPTIONS 1
-#else
-#define ARMIPS_EXCEPTIONS 0
-#endif
-#elif defined(_MSC_VER) && defined(_CPPUNWIND)
-#define ARMIPS_EXCEPTIONS 1
-#elif defined(__EXCEPTIONS) || defined(__cpp_exceptions)
-#define ARMIPS_EXCEPTIONS 1
-#else
-#define ARMIPS_EXCEPTIONS 0
-#endif
-
-#include <cstdio>
-#include <vector>
-#include <cstdlib>
-#include <cstdarg>
-#include <cstdint>
-#include <cctype>
-#include <cstring>
-#include <cmath>
-#include <clocale>
-
-#include <sstream>
-#include <iomanip>
-#include <memory>
-
-#define formatString tfm::format
-
-// Custom make_unique so that C++14 support will not be necessary for compilation
-template<typename T, typename... Args>
-std::unique_ptr<T> make_unique(Args&&... args)
-{
-    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-}
 
 // file: ext/tinyformat/tinyformat.h
 // tinyformat.h
@@ -105,7 +74,7 @@ std::unique_ptr<T> make_unique(Args&&... args)
 // header file.  Design goals include:
 //
 // * Type safety and extensibility for user defined types.
-// * C99 printf() compatibility, to the extent possible using std::wostream
+// * C99 printf() compatibility, to the extent possible using std::ostream
 // * Simplicity and minimalism.  A single header file to include and distribute
 //   with your projects.
 // * Augment rather than replace the standard stream formatting mechanism
@@ -115,10 +84,10 @@ std::unique_ptr<T> make_unique(Args&&... args)
 // Main interface example usage
 // ----------------------------
 //
-// To print a date to std::wcout:
+// To print a date to std::cout:
 //
-//   std::wstring weekday = L"Wednesday";
-//   const wchar_t* month = L"July";
+//   std::string weekday = "Wednesday";
+//   const char* month = "July";
 //   size_t day = 27;
 //   long hour = 14;
 //   int min = 44;
@@ -126,19 +95,19 @@ std::unique_ptr<T> make_unique(Args&&... args)
 //   tfm::printf("%s, %s %d, %.2d:%.2d\n", weekday, month, day, hour, min);
 //
 // The strange types here emphasize the type safety of the interface; it is
-// possible to print a std::wstring using the "%s" conversion, and a
+// possible to print a std::string using the "%s" conversion, and a
 // size_t using the "%d" conversion.  A similar result could be achieved
 // using either of the tfm::format() functions.  One prints on a user provided
 // stream:
 //
-//   tfm::format(std::cerr, L"%s, %s %d, %.2d:%.2d\n",
+//   tfm::format(std::cerr, "%s, %s %d, %.2d:%.2d\n",
 //               weekday, month, day, hour, min);
 //
-// The other returns a std::wstring:
+// The other returns a std::string:
 //
-//   std::wstring date = tfm::format(L"%s, %s %d, %.2d:%.2d\n",
+//   std::string date = tfm::format("%s, %s %d, %.2d:%.2d\n",
 //                                  weekday, month, day, hour, min);
-//   std::wcout << date;
+//   std::cout << date;
 //
 // These are the three primary interface functions.  There is also a
 // convenience function printfln() which appends a newline to the usual result
@@ -171,7 +140,7 @@ std::unique_ptr<T> make_unique(Args&&... args)
 // The format list can now be passed into any non-template function and used
 // via a call to the vformat() function:
 //
-//   tfm::vformat(std::wcout, L"%s, %s %d, %.2d:%.2d\n", formatList);
+//   tfm::vformat(std::cout, "%s, %s %d, %.2d:%.2d\n", formatList);
 //
 //
 // Additional API information
@@ -200,7 +169,7 @@ namespace tfm = tinyformat;
 
 // Define for C++11 variadic templates which make the code shorter & more
 // general.  If you don't define this, C++11 support is autodetected below.
-// #define TINYFORMAT_USE_VARIADIC_TEMPLATES
+#define TINYFORMAT_USE_VARIADIC_TEMPLATES
 
 
 //------------------------------------------------------------------------------
@@ -213,9 +182,6 @@ namespace tfm = tinyformat;
 #   include <cassert>
 #   define TINYFORMAT_ASSERT(cond) assert(cond)
 #endif
-
-#define TINYFORMAT_ALLOW_WCHAR_STRINGS
-#define TINYFORMAT_USE_VARIADIC_TEMPLATES
 
 #ifndef TINYFORMAT_ERROR
 #   include <cassert>
@@ -253,8 +219,8 @@ struct is_convertible
 {
     private:
         // two types of different size
-        struct fail { wchar_t dummy[2]; };
-        struct succeed { wchar_t dummy; };
+        struct fail { char dummy[2]; };
+        struct succeed { char dummy; };
         // Try to convert a T1 to a T2 by plugging into tryConvert
         static fail tryConvert(...);
         static succeed tryConvert(const T2&);
@@ -291,14 +257,14 @@ template<int n> struct is_wchar<wchar_t[n]> {};
 template<typename T, typename fmtT, bool convertible = is_convertible<T, fmtT>::value>
 struct formatValueAsType
 {
-    static void invoke(std::wostream& /*out*/, const T& /*value*/) { TINYFORMAT_ASSERT(0); }
+    static void invoke(std::ostream& /*out*/, const T& /*value*/) { TINYFORMAT_ASSERT(0); }
 };
 // Specialized version for types that can actually be converted to fmtT, as
 // indicated by the "convertible" template parameter.
 template<typename T, typename fmtT>
 struct formatValueAsType<T,fmtT,true>
 {
-    static void invoke(std::wostream& out, const T& value)
+    static void invoke(std::ostream& out, const T& value)
         { out << static_cast<fmtT>(value); }
 };
 
@@ -306,12 +272,12 @@ struct formatValueAsType<T,fmtT,true>
 template<typename T, bool convertible = is_convertible<T, int>::value>
 struct formatZeroIntegerWorkaround
 {
-    static bool invoke(std::wostream& /**/, const T& /**/) { return false; }
+    static bool invoke(std::ostream& /**/, const T& /**/) { return false; }
 };
 template<typename T>
 struct formatZeroIntegerWorkaround<T,true>
 {
-    static bool invoke(std::wostream& out, const T& value)
+    static bool invoke(std::ostream& out, const T& value)
     {
         if (static_cast<int>(value) == 0 && out.flags() & std::ios::showpos)
         {
@@ -342,27 +308,27 @@ struct convertToInt<T,true>
     static int invoke(const T& value) { return static_cast<int>(value); }
 };
 
-// Format at most ntrunc wchar_tacters to the given stream.
+// Format at most ntrunc characters to the given stream.
 template<typename T>
-inline void formatTruncated(std::wostream& out, const T& value, int ntrunc)
+inline void formatTruncated(std::ostream& out, const T& value, int ntrunc)
 {
-    std::wostringstream tmp;
+    std::ostringstream tmp;
     tmp << value;
-    std::wstring result = tmp.str();
+    std::string result = tmp.str();
     out.write(result.c_str(), (std::min)(ntrunc, static_cast<int>(result.size())));
 }
 #define TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR(type)       \
-inline void formatTruncated(std::wostream& out, type* value, int ntrunc) \
+inline void formatTruncated(std::ostream& out, type* value, int ntrunc) \
 {                                                           \
     std::streamsize len = 0;                                \
     while(len < ntrunc && value[len] != 0)                  \
         ++len;                                              \
     out.write(value, len);                                  \
 }
-// Overload for const wchar_t* and wchar_t*.  Could overload for signed & unsigned
-// wchar_t too, but these are technically unneeded for printf compatibility.
-TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR(const wchar_t)
-TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR(wchar_t)
+// Overload for const char* and char*.  Could overload for signed & unsigned
+// char too, but these are technically unneeded for printf compatibility.
+TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR(const char)
+TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR(char)
 #undef TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR
 
 } // namespace detail
@@ -385,8 +351,8 @@ TINYFORMAT_DEFINE_FORMAT_TRUNCATED_CSTR(wchar_t)
 /// operator<< to format the type T, with special cases for the %c and %p
 /// conversions.
 template<typename T>
-inline void formatValue(std::wostream& out, const wchar_t* /*fmtBegin*/,
-                        const wchar_t* fmtEnd, int ntrunc, const T& value)
+inline void formatValue(std::ostream& out, const char* /*fmtBegin*/,
+                        const char* fmtEnd, int ntrunc, const T& value)
 {
 #ifndef TINYFORMAT_ALLOW_WCHAR_STRINGS
     // Since we don't support printing of wchar_t using "%ls", make it fail at
@@ -395,14 +361,14 @@ inline void formatValue(std::wostream& out, const wchar_t* /*fmtBegin*/,
     (void) DummyType(); // avoid unused type warning with gcc-4.8
 #endif
     // The mess here is to support the %c and %p conversions: if these
-    // conversions are active we try to convert the type to a wchar_t or const
+    // conversions are active we try to convert the type to a char or const
     // void* respectively and format that instead of the value itself.  For the
     // %p conversion it's important to avoid dereferencing the pointer, which
-    // could otherwise lead to a crash when printing a dangling (const wchar_t*).
-    const bool canConvertToChar = detail::is_convertible<T,wchar_t>::value;
+    // could otherwise lead to a crash when printing a dangling (const char*).
+    const bool canConvertToChar = detail::is_convertible<T,char>::value;
     const bool canConvertToVoidPtr = detail::is_convertible<T, const void*>::value;
     if(canConvertToChar && *(fmtEnd-1) == 'c')
-        detail::formatValueAsType<T, wchar_t>::invoke(out, value);
+        detail::formatValueAsType<T, char>::invoke(out, value);
     else if(canConvertToVoidPtr && *(fmtEnd-1) == 'p')
         detail::formatValueAsType<T, const void*>::invoke(out, value);
 #ifdef TINYFORMAT_OLD_LIBSTDCPLUSPLUS_WORKAROUND
@@ -411,7 +377,7 @@ inline void formatValue(std::wostream& out, const wchar_t* /*fmtBegin*/,
     else if(ntrunc >= 0)
     {
         // Take care not to overread C strings in truncating conversions like
-        // "%.4s" where at most 4 wchar_tacters may be read.
+        // "%.4s" where at most 4 characters may be read.
         detail::formatTruncated(out, value, ntrunc);
     }
     else
@@ -419,10 +385,10 @@ inline void formatValue(std::wostream& out, const wchar_t* /*fmtBegin*/,
 }
 
 
-// Overloaded version for wchar_t types to support printing as an integer
-#define TINYFORMAT_DEFINE_FORMATVALUE_CHAR(wchar_tType)                  \
-inline void formatValue(std::wostream& out, const wchar_t* /*fmtBegin*/,  \
-                        const wchar_t* fmtEnd, int /**/, wchar_tType value) \
+// Overloaded version for char types to support printing as an integer
+#define TINYFORMAT_DEFINE_FORMATVALUE_CHAR(charType)                  \
+inline void formatValue(std::ostream& out, const char* /*fmtBegin*/,  \
+                        const char* fmtEnd, int /**/, charType value) \
 {                                                                     \
     switch(*(fmtEnd-1))                                               \
     {                                                                 \
@@ -581,8 +547,8 @@ class FormatArg
             m_toIntImpl(&toIntImpl<T>)
         { }
 
-        void format(std::wostream& out, const wchar_t* fmtBegin,
-                    const wchar_t* fmtEnd, int ntrunc) const
+        void format(std::ostream& out, const char* fmtBegin,
+                    const char* fmtEnd, int ntrunc) const
         {
             TINYFORMAT_ASSERT(m_value);
             TINYFORMAT_ASSERT(m_formatImpl);
@@ -598,8 +564,8 @@ class FormatArg
 
     private:
         template<typename T>
-        TINYFORMAT_HIDDEN static void formatImpl(std::wostream& out, const wchar_t* fmtBegin,
-                        const wchar_t* fmtEnd, int ntrunc, const void* value)
+        TINYFORMAT_HIDDEN static void formatImpl(std::ostream& out, const char* fmtBegin,
+                        const char* fmtEnd, int ntrunc, const void* value)
         {
             formatValue(out, fmtBegin, fmtEnd, ntrunc, *static_cast<const T*>(value));
         }
@@ -611,15 +577,15 @@ class FormatArg
         }
 
         const void* m_value;
-        void (*m_formatImpl)(std::wostream& out, const wchar_t* fmtBegin,
-                             const wchar_t* fmtEnd, int ntrunc, const void* value);
+        void (*m_formatImpl)(std::ostream& out, const char* fmtBegin,
+                             const char* fmtEnd, int ntrunc, const void* value);
         int (*m_toIntImpl)(const void* value);
 };
 
 
 // Parse and return an integer from the string c, as atoi()
 // On return, c is set to one past the end of the integer.
-inline int parseIntAndAdvance(const wchar_t*& c)
+inline int parseIntAndAdvance(const char*& c)
 {
     int i = 0;
     for(;*c >= '0' && *c <= '9'; ++c)
@@ -633,9 +599,9 @@ inline int parseIntAndAdvance(const wchar_t*& c)
 // Skips over any occurrences of '%%', printing a literal '%' to the
 // output.  The position of the first % character of the next
 // nontrivial format spec is returned, or the end of string.
-inline const wchar_t* printFormatStringLiteral(std::wostream& out, const wchar_t* fmt)
+inline const char* printFormatStringLiteral(std::ostream& out, const char* fmt)
 {
-    const wchar_t* c = fmt;
+    const char* c = fmt;
     for(;; ++c)
     {
         switch(*c)
@@ -666,9 +632,9 @@ inline const wchar_t* printFormatStringLiteral(std::wostream& out, const wchar_t
 // state are returned in spacePadPositive (for space padded positive numbers)
 // and ntrunc (for truncating conversions).  argIndex is incremented if
 // necessary to pull out variable width and precision .  The function returns a
-// pointer to the wchar_tacter after the end of the current format spec.
-inline const wchar_t* streamStateFromFormat(std::wostream& out, bool& spacePadPositive,
-                                         int& ntrunc, const wchar_t* fmtStart,
+// pointer to the character after the end of the current format spec.
+inline const char* streamStateFromFormat(std::ostream& out, bool& spacePadPositive,
+                                         int& ntrunc, const char* fmtStart,
                                          const detail::FormatArg* formatters,
                                          int& argIndex, int numFormatters)
 {
@@ -688,7 +654,7 @@ inline const wchar_t* streamStateFromFormat(std::wostream& out, bool& spacePadPo
     bool precisionSet = false;
     bool widthSet = false;
     int widthExtra = 0;
-    const wchar_t* c = fmtStart + 1;
+    const char* c = fmtStart + 1;
     // 1) Parse flags
     for(;; ++c)
     {
@@ -793,27 +759,27 @@ inline const wchar_t* streamStateFromFormat(std::wostream& out, bool& spacePadPo
             break;
         case 'X':
             out.setf(std::ios::uppercase);
-            // Falls through
+            [[fallthrough]]; // Falls through
         case 'x': case 'p':
             out.setf(std::ios::hex, std::ios::basefield);
             intConversion = true;
             break;
         case 'E':
             out.setf(std::ios::uppercase);
-            // Falls through
+            [[fallthrough]]; // Falls through
         case 'e':
             out.setf(std::ios::scientific, std::ios::floatfield);
             out.setf(std::ios::dec, std::ios::basefield);
             break;
         case 'F':
             out.setf(std::ios::uppercase);
-            // Falls through
+            [[fallthrough]]; // Falls through
         case 'f':
             out.setf(std::ios::fixed, std::ios::floatfield);
             break;
         case 'G':
             out.setf(std::ios::uppercase);
-            // Falls through
+            [[fallthrough]]; // Falls through
         case 'g':
             out.setf(std::ios::dec, std::ios::basefield);
             // As in boost::format, let stream decide float format.
@@ -858,7 +824,7 @@ inline const wchar_t* streamStateFromFormat(std::wostream& out, bool& spacePadPo
 
 
 //------------------------------------------------------------------------------
-inline void formatImpl(std::wostream& out, const wchar_t* fmt,
+inline void formatImpl(std::ostream& out, const char* fmt,
                        const detail::FormatArg* formatters,
                        int numFormatters)
 {
@@ -866,7 +832,7 @@ inline void formatImpl(std::wostream& out, const wchar_t* fmt,
     std::streamsize origWidth = out.width();
     std::streamsize origPrecision = out.precision();
     std::ios::fmtflags origFlags = out.flags();
-    wchar_t origFill = out.fill();
+    char origFill = out.fill();
 
     for (int argIndex = 0; argIndex < numFormatters; ++argIndex)
     {
@@ -874,7 +840,7 @@ inline void formatImpl(std::wostream& out, const wchar_t* fmt,
         fmt = printFormatStringLiteral(out, fmt);
         bool spacePadPositive = false;
         int ntrunc = -1;
-        const wchar_t* fmtEnd = streamStateFromFormat(out, spacePadPositive, ntrunc, fmt,
+        const char* fmtEnd = streamStateFromFormat(out, spacePadPositive, ntrunc, fmt,
                                                    formatters, argIndex, numFormatters);
         if (argIndex >= numFormatters)
         {
@@ -892,11 +858,11 @@ inline void formatImpl(std::wostream& out, const wchar_t* fmt,
             // between stream formatting and the printf() behaviour.  Simulate
             // it crudely by formatting into a temporary string stream and
             // munging the resulting string.
-            std::wostringstream tmpStream;
+            std::ostringstream tmpStream;
             tmpStream.copyfmt(out);
             tmpStream.setf(std::ios::showpos);
             arg.format(tmpStream, fmt, fmtEnd, ntrunc);
-            std::wstring result = tmpStream.str(); // allocates... yuck.
+            std::string result = tmpStream.str(); // allocates... yuck.
             for(size_t i = 0, iend = result.size(); i < iend; ++i)
                 if(result[i] == '+') result[i] = ' ';
             out << result;
@@ -931,7 +897,7 @@ class FormatList
         FormatList(detail::FormatArg* formatters, int N)
             : m_formatters(formatters), m_N(N) { }
 
-        friend void vformat(std::wostream& out, const wchar_t* fmt,
+        friend void vformat(std::ostream& out, const char* fmt,
                             const FormatList& list);
 
     private:
@@ -1027,7 +993,7 @@ TINYFORMAT_FOREACH_ARGNUM(TINYFORMAT_MAKE_MAKEFORMATLIST)
 ///
 /// The name vformat() is chosen for the semantic similarity to vprintf(): the
 /// list of format arguments is held in a single function argument.
-inline void vformat(std::wostream& out, const wchar_t* fmt, FormatListRef list)
+inline void vformat(std::ostream& out, const char* fmt, FormatListRef list)
 {
     detail::formatImpl(out, fmt, list.m_formatters, list.m_N);
 }
@@ -1037,7 +1003,7 @@ inline void vformat(std::wostream& out, const wchar_t* fmt, FormatListRef list)
 
 /// Format list of arguments to the stream according to given format string.
 template<typename... Args>
-void format(std::wostream& out, const wchar_t* fmt, const Args&... args)
+void format(std::ostream& out, const char* fmt, const Args&... args)
 {
     vformat(out, fmt, makeFormatList(args...));
 }
@@ -1045,80 +1011,80 @@ void format(std::wostream& out, const wchar_t* fmt, const Args&... args)
 /// Format list of arguments according to the given format string and return
 /// the result as a string.
 template<typename... Args>
-std::wstring format(const wchar_t* fmt, const Args&... args)
+std::string format(const char* fmt, const Args&... args)
 {
-    std::wostringstream oss;
+    std::ostringstream oss;
     format(oss, fmt, args...);
     return oss.str();
 }
 
-/// Format list of arguments to std::wcout, according to the given format string
+/// Format list of arguments to std::cout, according to the given format string
 template<typename... Args>
-void printf(const wchar_t* fmt, const Args&... args)
+void printf(const char* fmt, const Args&... args)
 {
-    format(std::wcout, fmt, args...);
+    format(std::cout, fmt, args...);
 }
 
 template<typename... Args>
-void printfln(const wchar_t* fmt, const Args&... args)
+void printfln(const char* fmt, const Args&... args)
 {
-    format(std::wcout, fmt, args...);
-    std::wcout << '\n';
+    format(std::cout, fmt, args...);
+    std::cout << '\n';
 }
 
 
 #else // C++98 version
 
-inline void format(std::wostream& out, const wchar_t* fmt)
+inline void format(std::ostream& out, const char* fmt)
 {
     vformat(out, fmt, makeFormatList());
 }
 
-inline std::wstring format(const wchar_t* fmt)
+inline std::string format(const char* fmt)
 {
-    std::wostringstream oss;
+    std::ostringstream oss;
     format(oss, fmt);
     return oss.str();
 }
 
-inline void printf(const wchar_t* fmt)
+inline void printf(const char* fmt)
 {
-    format(std::wcout, fmt);
+    format(std::cout, fmt);
 }
 
-inline void printfln(const wchar_t* fmt)
+inline void printfln(const char* fmt)
 {
-    format(std::wcout, fmt);
-    std::wcout << '\n';
+    format(std::cout, fmt);
+    std::cout << '\n';
 }
 
 #define TINYFORMAT_MAKE_FORMAT_FUNCS(n)                                   \
                                                                           \
 template<TINYFORMAT_ARGTYPES(n)>                                          \
-void format(std::wostream& out, const wchar_t* fmt, TINYFORMAT_VARARGS(n))    \
+void format(std::ostream& out, const char* fmt, TINYFORMAT_VARARGS(n))    \
 {                                                                         \
     vformat(out, fmt, makeFormatList(TINYFORMAT_PASSARGS(n)));            \
 }                                                                         \
                                                                           \
 template<TINYFORMAT_ARGTYPES(n)>                                          \
-std::wstring format(const wchar_t* fmt, TINYFORMAT_VARARGS(n))                \
+std::string format(const char* fmt, TINYFORMAT_VARARGS(n))                \
 {                                                                         \
-    std::wostringstream oss;                                               \
+    std::ostringstream oss;                                               \
     format(oss, fmt, TINYFORMAT_PASSARGS(n));                             \
     return oss.str();                                                     \
 }                                                                         \
                                                                           \
 template<TINYFORMAT_ARGTYPES(n)>                                          \
-void printf(const wchar_t* fmt, TINYFORMAT_VARARGS(n))                       \
+void printf(const char* fmt, TINYFORMAT_VARARGS(n))                       \
 {                                                                         \
-    format(std::wcout, fmt, TINYFORMAT_PASSARGS(n));                       \
+    format(std::cout, fmt, TINYFORMAT_PASSARGS(n));                       \
 }                                                                         \
                                                                           \
 template<TINYFORMAT_ARGTYPES(n)>                                          \
-void printfln(const wchar_t* fmt, TINYFORMAT_VARARGS(n))                     \
+void printfln(const char* fmt, TINYFORMAT_VARARGS(n))                     \
 {                                                                         \
-    format(std::wcout, fmt, TINYFORMAT_PASSARGS(n));                       \
-    std::wcout << '\n';                                                    \
+    format(std::cout, fmt, TINYFORMAT_PASSARGS(n));                       \
+    std::cout << '\n';                                                    \
 }
 
 TINYFORMAT_FOREACH_ARGNUM(TINYFORMAT_MAKE_FORMAT_FUNCS)
@@ -1131,507 +1097,153 @@ TINYFORMAT_FOREACH_ARGNUM(TINYFORMAT_MAKE_FORMAT_FUNCS)
 
 #endif // TINYFORMAT_H_INCLUDED
 
-// file: Commands/CAssemblerCommand.h
+// file: Core/Types.h
 
-class TempData;
-class SymbolData;
 
-class CAssemblerCommand
+#include <cstring>
+#include <ostream>
+#include <string>
+
+class Identifier
 {
 public:
-	CAssemblerCommand();
-	virtual ~CAssemblerCommand() { };
-	virtual bool Validate() = 0;
-	virtual void Encode() const = 0;
-	virtual void writeTempData(TempData& tempData) const = 0;
-	virtual void writeSymData(SymbolData& symData) const { };
-	void applyFileInfo();
-	int getSection() { return section; }
-	void updateSection(int num) { section = num; }
-protected:
-	int FileNum;
-	int FileLine;
+	explicit Identifier() = default;
+	explicit Identifier(std::string name);
+	Identifier(const Identifier &) = default;
+	Identifier(Identifier &&) = default;
+
+	Identifier &operator=(const Identifier &) = default;
+	Identifier &operator=(Identifier &&) = default;
+
+	size_t size() const
+	{
+		return _name.size();
+	}
+
+	bool startsWith(char value) const
+	{
+		return _name.front() == value;
+	}
+
+	bool startsWith(std::string_view value) const
+	{
+		if (_name.size() < value.size())
+			return false;
+
+		return memcmp(_name.data(), value.data(), value.size()) == 0;
+	}
+
+	const std::string &string() const
+	{
+		return _name;
+	}
+
+	bool operator<(const Identifier& other) const
+	{
+		return _name < other._name;
+	}
+
+	bool operator==(const Identifier& other) const
+	{
+		return _name == other._name;
+	}
+
+	bool operator!=(const Identifier& other) const
+	{
+		return _name != other._name;
+	}
+
+	bool operator==(const std::string_view other) const
+	{
+		return _name == other;
+	}
+
+	bool operator!=(const std::string_view other) const
+	{
+		return _name != other;
+	}
 private:
-	int section;
+	std::string _name;
 };
 
-class DummyCommand: public CAssemblerCommand
+inline bool operator==(const std::string_view first, const Identifier &second)
 {
-public:
-	virtual bool Validate() { return false; };
-	virtual void Encode() const { };
-	virtual void writeTempData(TempData& tempData) const { };
-	virtual void writeSymData(SymbolData& symData) const { };
-};
-
-class InvalidCommand: public CAssemblerCommand
-{
-public:
-	virtual bool Validate() { return false; };
-	virtual void Encode() const { };
-	virtual void writeTempData(TempData& tempData) const { };
-	virtual void writeSymData(SymbolData& symData) const { };
-};
-
-// file: Core/Expression.h
-#include <memory>
-
-inline std::wstring to_wstring(int64_t value)
-{
-	return formatString(L"%d", value);
+	return second == first;
 }
 
-inline std::wstring to_wstring(double value)
+inline bool operator!=(const std::string_view first, const Identifier &second)
 {
-	return formatString(L"%#.17g", value);
+	return second != first;
 }
 
-enum class OperatorType
-{
-	Invalid,
-	Integer,
-	Float,
-	Identifier,
-	String,
-	MemoryPos,
-	Add,
-	Sub,
-	Mult,
-	Div,
-	Mod,
-	Neg,
-	LogNot,
-	BitNot,
-	LeftShift,
-	RightShift,
-	Less,
-	Greater,
-	LessEqual,
-	GreaterEqual,
-	Equal,
-	NotEqual,
-	BitAnd,
-	Xor,
-	BitOr,
-	LogAnd,
-	LogOr,
-	TertiaryIf,
-	ToString,
-	FunctionCall
-};
+std::ostream& operator<<(std::ostream &output, const Identifier &identifier);
 
-enum class ExpressionValueType { Invalid, Integer, Float, String};
 
-struct ExpressionValue
-{
-	ExpressionValueType type;
-
-	ExpressionValue()
-	{
-		type = ExpressionValueType::Invalid;
-	}
-
-	ExpressionValue(int64_t value)
-	{
-		type = ExpressionValueType::Integer;
-		intValue = value;
-	}
-
-	ExpressionValue(double value)
-	{
-		type = ExpressionValueType::Float;
-		floatValue = value;
-	}
-
-	ExpressionValue(const std::wstring& value)
-	{
-		type = ExpressionValueType::String;
-		strValue = value;
-	}
-
-	bool isFloat() const
-	{
-		return type == ExpressionValueType::Float;
-	}
-
-	bool isInt() const
-	{
-		return type == ExpressionValueType::Integer;
-	}
-
-	bool isString() const
-	{
-		return type == ExpressionValueType::String;
-	}
-
-	bool isValid() const
-	{
-		return type != ExpressionValueType::Invalid;
-	}
-
-	struct
-	{
-		int64_t intValue;
-		double floatValue;
-	};
-
-	std::wstring strValue;
-
-	ExpressionValue operator!() const;
-	ExpressionValue operator~() const;
-	bool operator<(const ExpressionValue& other) const;
-	bool operator<=(const ExpressionValue& other) const;
-	bool operator>(const ExpressionValue& other) const;
-	bool operator>=(const ExpressionValue& other) const;
-	bool operator==(const ExpressionValue& other) const;
-	bool operator!=(const ExpressionValue& other) const;
-	ExpressionValue operator+(const ExpressionValue& other) const;
-	ExpressionValue operator-(const ExpressionValue& other) const;
-	ExpressionValue operator*(const ExpressionValue& other) const;
-	ExpressionValue operator/(const ExpressionValue& other) const;
-	ExpressionValue operator%(const ExpressionValue& other) const;
-	ExpressionValue operator<<(const ExpressionValue& other) const;
-	ExpressionValue operator>>(const ExpressionValue& other) const;
-	ExpressionValue operator&(const ExpressionValue& other) const;
-	ExpressionValue operator|(const ExpressionValue& other) const;
-	ExpressionValue operator&&(const ExpressionValue& other) const;
-	ExpressionValue operator||(const ExpressionValue& other) const;
-	ExpressionValue operator^(const ExpressionValue& other) const;
-};
-
-class Label;
-
-struct ExpressionFunctionEntry;
-struct ExpressionLabelFunctionEntry;
-
-class ExpressionInternal
+class StringLiteral
 {
 public:
-	ExpressionInternal();
-	~ExpressionInternal();
-	ExpressionInternal(int64_t value);
-	ExpressionInternal(double value);
-	ExpressionInternal(const std::wstring& value, OperatorType type);
-	ExpressionInternal(OperatorType op, ExpressionInternal* a = nullptr,
-		ExpressionInternal* b = nullptr, ExpressionInternal* c = nullptr);
-	ExpressionInternal(const std::wstring& name, const std::vector<ExpressionInternal*>& parameters);
-	ExpressionValue evaluate();
-	std::wstring toString();
-	bool isIdentifier() { return type == OperatorType::Identifier; }
-	std::wstring getStringValue() { return strValue; }
-	void replaceMemoryPos(const std::wstring& identifierName);
-	bool simplify(bool inUnknownOrFalseBlock);
-	unsigned int getFileNum() { return fileNum; }
-	unsigned int getSection() { return section; }
+	StringLiteral() = default;
+	StringLiteral(std::string value);
+	StringLiteral(const StringLiteral &) = default;
+	StringLiteral(StringLiteral &&) = default;
+
+	StringLiteral &operator=(const StringLiteral &) = default;
+	StringLiteral &operator=(StringLiteral &&) = default;
+
+	size_t size() const
+	{
+		return _value.size();
+	}
+
+	const std::string &string() const
+	{
+		return _value;
+	}
+
+	fs::path path() const
+	{
+		return fs::u8path(_value);
+	}
+
+	StringLiteral operator+(const StringLiteral &other) const;
+	bool operator==(const StringLiteral &other) const;
+	bool operator!=(const StringLiteral &other) const;
+	bool operator<(const StringLiteral &other) const;
+	bool operator<=(const StringLiteral &other) const;
+	bool operator>(const StringLiteral &other) const;
+	bool operator>=(const StringLiteral &other) const;
+
 private:
-	void allocate(size_t count);
-	void deallocate();
-	std::wstring formatFunctionCall();
-	ExpressionValue executeExpressionFunctionCall(const ExpressionFunctionEntry& entry);
-	ExpressionValue executeExpressionLabelFunctionCall(const ExpressionLabelFunctionEntry& entry);
-	ExpressionValue executeFunctionCall();
-	bool checkParameterCount(size_t min, size_t max);
-
-	OperatorType type;
-	ExpressionInternal** children;
-	size_t childrenCount;
-
-	union
-	{
-		int64_t intValue;
-		double floatValue;
-	};
-	std::wstring strValue;
-
-	unsigned int fileNum, section;
+	std::string _value;
 };
 
-class Expression
-{
-public:
-	Expression();
-	ExpressionValue evaluate();
-	bool isLoaded() const { return expression != nullptr; }
-	void setExpression(ExpressionInternal* exp, bool inUnknownOrFalseBlock);
-	void replaceMemoryPos(const std::wstring& identifierName);
-	bool isConstExpression() { return constExpression; }
-
-	template<typename T>
-	bool evaluateInteger(T& dest)
-	{
-		if (expression == nullptr)
-			return false;
-
-		ExpressionValue value = expression->evaluate();
-		if (value.isInt() == false)
-			return false;
-
-		dest = (T) value.intValue;
-		return true;
-	}
-
-	bool evaluateString(std::wstring& dest, bool convert)
-	{
-		if (expression == nullptr)
-			return false;
-
-		ExpressionValue value = expression->evaluate();
-		if (convert && value.isInt())
-		{
-			dest = to_wstring(value.intValue);
-			return true;
-		}
-
-		if (convert && value.isFloat())
-		{
-			dest = to_wstring(value.floatValue);
-			return true;
-		}
-
-		if (value.isString() == false)
-			return false;
-
-		dest = value.strValue;
-		return true;
-	}
-
-	bool evaluateIdentifier(std::wstring& dest)
-	{
-		if (expression == nullptr || expression->isIdentifier() == false)
-			return false;
-
-		dest = expression->getStringValue();
-		return true;
-	}
-
-	std::wstring toString() { return expression != nullptr ? expression->toString() : L""; };
-private:
-	std::shared_ptr<ExpressionInternal> expression;
-	std::wstring originalText;
-	bool constExpression;
-};
-
-Expression createConstExpression(int64_t value);
-
-// file: Core/ExpressionFunctions.h
-#include <map>
-
-bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, int64_t& dest,
-	const std::wstring& funcName, bool optional);
-
-bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, const std::wstring*& dest,
-	const std::wstring& funcName, bool optional);
-
-using ExpressionFunction = ExpressionValue (*)(const std::wstring& funcName, const std::vector<ExpressionValue>&);
-using ExpressionLabelFunction = ExpressionValue (*)(const std::wstring& funcName, const std::vector<std::shared_ptr<Label>> &);
-
-enum class ExpFuncSafety
-{
-	// Result may depend entirely on the internal state
-	Unsafe,
-	// Result is unsafe in conditional blocks, safe otherwise
-	ConditionalUnsafe,
-	// Result is completely independent of the internal state
-	Safe,
-};
-
-struct ExpressionFunctionEntry
-{
-	ExpressionFunction function;
-	size_t minParams;
-	size_t maxParams;
-	ExpFuncSafety safety;
-};
-
-struct ExpressionLabelFunctionEntry
-{
-	ExpressionLabelFunction function;
-	size_t minParams;
-	size_t maxParams;
-	ExpFuncSafety safety;
-};
-
-
-using ExpressionFunctionMap =  std::map<std::wstring, const ExpressionFunctionEntry>;
-using ExpressionLabelFunctionMap =  std::map<std::wstring, const ExpressionLabelFunctionEntry>;
-
-extern const ExpressionFunctionMap expressionFunctions;
-extern const ExpressionLabelFunctionMap expressionLabelFunctions;
-
-// file: Core/SymbolData.h
-#include <set>
-
-class AssemblerFile;
-
-struct SymDataSymbol
-{
-	std::wstring name;
-	int64_t address;
-
-	bool operator<(const SymDataSymbol& other) const
-	{
-		return address < other.address;
-	}
-};
-
-struct SymDataAddressInfo
-{
-	int64_t address;
-	size_t fileIndex;
-	size_t lineNumber;
-
-	bool operator<(const SymDataAddressInfo& other) const
-	{
-		return address < other.address;
-	}
-};
-
-struct SymDataFunction
-{
-	int64_t address;
-	size_t size;
-
-	bool operator<(const SymDataFunction& other) const
-	{
-		return address < other.address;
-	}
-};
-
-struct SymDataData
-{
-	int64_t address;
-	size_t size;
-	int type;
-
-	bool operator<(const SymDataData& other) const
-	{
-		if (address != other.address)
-			return address < other.address;
-
-		if (size != other.size)
-			return size < other.size;
-
-		return type < other.type;
-	}
-};
-
-struct SymDataModule
-{
-	AssemblerFile* file;
-	std::vector<SymDataSymbol> symbols;
-	std::vector<SymDataFunction> functions;
-	std::set<SymDataData> data;
-};
-
-struct SymDataModuleInfo
-{
-	unsigned int crc32;
-};
-
-class SymbolData
-{
-public:
-	enum DataType { Data8, Data16, Data32, Data64, DataAscii };
-
-	SymbolData();
-	void clear();
-	void setNocashSymFileName(const std::wstring& name, int version) { nocashSymFileName = name; nocashSymVersion = version; };
-	void write();
-	void setEnabled(bool b) { enabled = b; };
-
-	void addLabel(int64_t address, const std::wstring& name);
-	void addData(int64_t address, size_t size, DataType type);
-	void startModule(AssemblerFile* file);
-	void endModule(AssemblerFile* file);
-	void startFunction(int64_t address);
-	void endFunction(int64_t address);
-private:
-	void writeNocashSym();
-	size_t addFileName(const std::wstring& fileName);
-
-	std::wstring nocashSymFileName;
-	bool enabled;
-	int nocashSymVersion;
-
-	// entry 0 is for data without parent modules
-	std::vector<SymDataModule> modules;
-	std::vector<std::wstring> files;
-	int currentModule;
-	int currentFunction;
-};
+std::ostream& operator<<(std::ostream &output, const StringLiteral &string);
 
 // file: Util/Util.h
+
+#include <cstdint>
 #include <string>
-#include <stdio.h>
+#include <vector>
 
+std::string convertUnicodeCharToUtf8(char32_t character);
+std::string convertWStringToUtf8(std::wstring_view source);
 
-typedef std::vector<std::wstring> StringList;
-
-std::wstring convertUtf8ToWString(const char* source);
-std::string convertWCharToUtf8(wchar_t character);
-;std::string convertWStringToUtf8(const std::wstring& source);
-
-std::wstring intToHexString(unsigned int value, int digits, bool prefix = false);
-std::wstring intToString(unsigned int value, int digits);
-bool stringToInt(const std::wstring& line, size_t start, size_t end, int64_t& result);
+bool stringToInt(const std::string& line, size_t start, size_t end, int64_t& result);
 int32_t getFloatBits(float value);
 float bitsToFloat(int32_t value);
 int64_t getDoubleBits(double value);
 
-StringList getStringListFromArray(wchar_t** source, int count);
-StringList splitString(const std::wstring& str, const wchar_t delim, bool skipEmpty);
-
-int64_t fileSize(const std::wstring& fileName);
-bool fileExists(const std::wstring& strFilename);
-bool copyFile(const std::wstring& existingFile, const std::wstring& newFile);
-bool deleteFile(const std::wstring& fileName);;
-
-std::wstring toWLowercase(const std::string& str);
-std::wstring getFileNameFromPath(const std::wstring& path);
-size_t replaceAll(std::wstring& str, const wchar_t* oldValue,const std::wstring& newValue);
-bool startsWith(const std::wstring& str, const wchar_t* value, size_t stringPos = 0);
-
-enum class OpenFileMode { ReadBinary, WriteBinary, ReadWriteBinary };
-FILE* openFile(const std::wstring& fileName, OpenFileMode mode);
-std::wstring getCurrentDirectory();
-bool changeDirectory(const std::wstring& dir);
-bool isAbsolutePath(const std::wstring& path);
-
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(x) (sizeof((x)) / sizeof((x)[0]))
-#endif
+std::string toLowercase(const std::string& str);
+size_t replaceAll(std::string& str, const char* oldValue,const std::string& newValue);
+bool startsWith(const std::string& str, const char* value, size_t stringPos = 0);
 
 // file: Util/FileClasses.h
+
+
 #include <list>
+#include <optional>
+#include <vector>
 
-class BinaryFile
-{
-public:
-	enum Mode { Read, Write, ReadWrite };
-
-	BinaryFile();
-	~BinaryFile();
-
-	bool open(const std::wstring& fileName, Mode mode);
-	bool open(Mode mode);
-	bool isOpen() { return handle != nullptr; };
-	bool atEnd() { return isOpen() && mode != Write && ftell(handle) == size_; };
-	void setPos(long pos) { if (isOpen()) fseek(handle,pos,SEEK_SET); };
-	long pos() { return isOpen() ? ftell(handle) : -1; }
-	long size() { return size_; };
-	void close();
-
-	void setFileName(const std::wstring& name) { fileName = name; };
-	const std::wstring& getFileName() { return fileName; };
-
-	size_t read(void* dest, size_t length);
-	size_t write(void* source, size_t length);
-private:
-	FILE* handle;
-	std::wstring fileName;
-	Mode mode;
-	long size_;
-};
 
 class TextFile
 {
@@ -1641,10 +1253,10 @@ public:
 
 	TextFile();
 	~TextFile();
-	void openMemory(const std::wstring& content);
-	bool open(const std::wstring& fileName, Mode mode, Encoding defaultEncoding = GUESS);
+	void openMemory(const std::string& content);
+	bool open(const fs::path& fileName, Mode mode, Encoding defaultEncoding = GUESS);
 	bool open(Mode mode, Encoding defaultEncoding = GUESS);
-	bool isOpen() { return fromMemory || handle != nullptr; };
+	bool isOpen() { return fromMemory || stream.is_open(); };
 	bool atEnd() { return isOpen() && mode == Read && tell() >= size_; };
 	long size() { return size_; };
 	void close();
@@ -1653,47 +1265,45 @@ public:
 	bool isFromMemory() { return fromMemory; }
 	int getNumLines() { return lineCount; }
 
-	void setFileName(const std::wstring& name) { fileName = name; };
-	const std::wstring& getFileName() { return fileName; };
+	void setFileName(const fs::path& name) { fileName = name; };
+	const fs::path& getFileName() { return fileName; };
 
-	wchar_t readCharacter();
-	std::wstring readLine();
-	StringList readAll();
-	void writeCharacter(wchar_t character);
-	void write(const wchar_t* line);
-	void write(const std::wstring& line);
+	std::string readLine();
+	std::vector<std::string> readAll();
 	void write(const char* value);
 	void write(const std::string& value);
-	void writeLine(const wchar_t* line);
-	void writeLine(const std::wstring& line);
 	void writeLine(const char* line);
 	void writeLine(const std::string& line);
-	void writeLines(StringList& list);
+	void writeLines(std::vector<std::string>& list);
 
 	template <typename... Args>
-	void writeFormat(const wchar_t* text, const Args&... args)
+	void writeFormat(const char* text, const Args&... args)
 	{
-		std::wstring message = formatString(text,args...);
+		std::string message = tfm::format(text,args...);
 		write(message);
 	}
 
 	bool hasError() { return errorText.size() != 0 && !errorRetrieved; };
-	const std::wstring& getErrorText() { errorRetrieved = true; return errorText; };
+	const std::string& getErrorText() { errorRetrieved = true; return errorText; };
 private:
+	char32_t readCharacter();
+
+	std::string readLineUtf8();
+	std::string readLineSJIS();
 	long tell();
 	void seek(long pos);
 
-	FILE* handle;
-	std::wstring fileName;
+	fs::fstream stream;
+	fs::path fileName;
 	Encoding encoding;
 	Mode mode;
 	bool recursion;
 	bool guessedEncoding;
 	long size_;
-	std::wstring errorText;
+	std::string errorText;
 	bool errorRetrieved;
 	bool fromMemory;
-	std::wstring content;
+	std::string content;
 	size_t contentPos;
 	int lineCount;
 
@@ -1702,24 +1312,28 @@ private:
 
 	inline unsigned char bufGetChar()
 	{
+		if (fromMemory)
+			return content[contentPos++];
+
 		if (buf.size() <= bufPos)
 		{
 			bufFillRead();
 			if (buf.size() == 0)
 				return 0;
 		}
+		++contentPos;
 		return buf[bufPos++];
 	}
 	inline unsigned short bufGet16LE()
 	{
-		char c1 = bufGetChar();
-		char c2 = bufGetChar();
+		unsigned char c1 = bufGetChar();
+		unsigned char c2 = bufGetChar();
 		return c1 | (c2 << 8);
 	}
 	inline unsigned short bufGet16BE()
 	{
-		char c1 = bufGetChar();
-		char c2 = bufGetChar();
+		unsigned char c1 = bufGetChar();
+		unsigned char c2 = bufGetChar();
 		return c2 | (c1 << 8);
 	}
 
@@ -1730,10 +1344,13 @@ private:
 	void bufDrainWrite();
 };
 
-wchar_t sjisToUnicode(unsigned short);
-TextFile::Encoding getEncodingFromString(const std::wstring& str);
+std::optional<char16_t> sjisToUnicode(unsigned short);
+TextFile::Encoding getEncodingFromString(const std::string& str);
 
 // file: Util/ByteArray.h
+
+
+#include <string>
 
 #include <sys/types.h>
 
@@ -1842,8 +1459,8 @@ public:
 	ByteArray left(size_t length) { return mid(0,length); };
 	ByteArray right(size_t length) { return mid(size_-length,length); };
 
-	static ByteArray fromFile(const std::wstring& fileName, long start = 0, size_t size = 0);
-	bool toFile(const std::wstring& fileName);
+	static ByteArray fromFile(const fs::path& fileName, long start = 0, size_t size = 0);
+	bool toFile(const fs::path& fileName);
 private:
 	void grow(size_t neededSize);
 	byte* data_;
@@ -1851,8 +1468,513 @@ private:
 	size_t allocatedSize_;
 };
 
-// file: Core/FileManager.h
+// file: Util/EncodingTable.h
+
+
+#include <map>
 #include <vector>
+
+class Trie
+{
+public:
+	Trie();
+	void insert(const char* text, size_t value);
+	bool findLongestPrefix(const char* text, size_t& result);
+private:
+	struct LookupEntry
+	{
+		size_t node;
+		char input;
+
+		bool operator<(const LookupEntry& other) const
+		{
+			if (node != other.node)
+				return node < other.node;
+			return input < other.input;
+		}
+	};
+
+	struct Node
+	{
+		size_t index;
+		bool hasValue;
+		size_t value;
+	};
+
+	std::vector<Node> nodes;
+	std::map<LookupEntry,size_t> lookup;
+};
+
+class EncodingTable
+{
+public:
+	EncodingTable();
+	~EncodingTable();
+	void clear();
+	bool load(const fs::path& fileName, TextFile::Encoding encoding = TextFile::GUESS);
+	bool isLoaded() { return entries.size() != 0; };
+	void addEntry(unsigned char* hex, size_t hexLength, const std::string& value);
+	void setTerminationEntry(unsigned char* hex, size_t hexLength);
+	ByteArray encodeString(const std::string& str, bool writeTermination = true);
+	ByteArray encodeTermination();
+private:
+	struct TableEntry
+	{
+		size_t hexPos;
+		size_t hexLen;
+		size_t valueLen;
+	};
+
+	ByteArray hexData;
+	std::vector<TableEntry> entries;
+	Trie lookup;
+	TableEntry terminationEntry;
+};
+
+// file: Util/CRC.h
+
+#include <cstddef>
+
+unsigned short getCrc16(unsigned char* Source, size_t len);
+unsigned int getCrc32(unsigned char* Source, size_t len);
+unsigned int getChecksum(unsigned char* Source, size_t len);
+
+// file: Core/Expression.h
+
+
+#include <cassert>
+#include <memory>
+#include <string>
+#include <variant>
+#include <vector>
+
+class Label;
+
+struct ExpressionFunctionEntry;
+struct ExpressionLabelFunctionEntry;
+
+enum class OperatorType
+{
+	Invalid,
+	Integer,
+	Float,
+	Identifier,
+	String,
+	MemoryPos,
+	Add,
+	Sub,
+	Mult,
+	Div,
+	Mod,
+	Neg,
+	LogNot,
+	BitNot,
+	LeftShift,
+	RightShift,
+	Less,
+	Greater,
+	LessEqual,
+	GreaterEqual,
+	Equal,
+	NotEqual,
+	BitAnd,
+	Xor,
+	BitOr,
+	LogAnd,
+	LogOr,
+	TertiaryIf,
+	ToString,
+	FunctionCall
+};
+
+enum class ExpressionValueType { Invalid, Integer, Float, String };
+
+struct ExpressionValue
+{
+	ExpressionValueType type;
+
+	ExpressionValue()
+	{
+		type = ExpressionValueType::Invalid;
+		intValue = 0;
+	}
+
+	ExpressionValue(int64_t value)
+	{
+		type = ExpressionValueType::Integer;
+		intValue = value;
+	}
+
+	ExpressionValue(double value)
+	{
+		type = ExpressionValueType::Float;
+		floatValue = value;
+	}
+
+	ExpressionValue(const StringLiteral& value)
+		: type(ExpressionValueType::String), strValue(value)
+	{
+		intValue = 0;
+	}
+
+	bool isFloat() const
+	{
+		return type == ExpressionValueType::Float;
+	}
+
+	bool isInt() const
+	{
+		return type == ExpressionValueType::Integer;
+	}
+
+	bool isString() const
+	{
+		return type == ExpressionValueType::String;
+	}
+
+	bool isValid() const
+	{
+		return type != ExpressionValueType::Invalid;
+	}
+
+	union
+	{
+		int64_t intValue;
+		double floatValue;
+	};
+
+	StringLiteral strValue;
+
+	ExpressionValue operator!() const;
+	ExpressionValue operator~() const;
+	bool operator<(const ExpressionValue& other) const;
+	bool operator<=(const ExpressionValue& other) const;
+	bool operator>(const ExpressionValue& other) const;
+	bool operator>=(const ExpressionValue& other) const;
+	bool operator==(const ExpressionValue& other) const;
+	bool operator!=(const ExpressionValue& other) const;
+	ExpressionValue operator+(const ExpressionValue& other) const;
+	ExpressionValue operator-(const ExpressionValue& other) const;
+	ExpressionValue operator*(const ExpressionValue& other) const;
+	ExpressionValue operator/(const ExpressionValue& other) const;
+	ExpressionValue operator%(const ExpressionValue& other) const;
+	ExpressionValue operator<<(const ExpressionValue& other) const;
+	ExpressionValue operator>>(const ExpressionValue& other) const;
+	ExpressionValue operator&(const ExpressionValue& other) const;
+	ExpressionValue operator|(const ExpressionValue& other) const;
+	ExpressionValue operator&&(const ExpressionValue& other) const;
+	ExpressionValue operator||(const ExpressionValue& other) const;
+	ExpressionValue operator^(const ExpressionValue& other) const;
+};
+
+class ExpressionInternal
+{
+public:
+	ExpressionInternal() = default;
+	~ExpressionInternal() = default;
+	ExpressionInternal(int64_t value);
+	ExpressionInternal(double value);
+	ExpressionInternal(Identifier value);
+	ExpressionInternal(StringLiteral value);
+
+	template<typename... ARGS>
+	ExpressionInternal(OperatorType op, ARGS... parameters) :
+		type(op)
+	{
+		( children.push_back(std::move(parameters)), ... );
+	}
+
+	ExpressionInternal(const Identifier& name, std::vector<std::unique_ptr<ExpressionInternal>> parameters);
+	ExpressionValue evaluate();
+	std::string toString();
+	bool isIdentifier() { return type == OperatorType::Identifier; }
+	const Identifier &getIdentifier() { return valueAs<Identifier>(); }
+	void replaceMemoryPos(const Identifier& identifierName);
+	bool simplify(bool inUnknownOrFalseBlock);
+	unsigned int getFileNum() { return fileNum; }
+	unsigned int getSection() { return section; }
+private:
+	using ValueTypes = std::variant<std::monostate, int64_t, double, StringLiteral, Identifier>;
+
+	template<typename T>
+	const T &valueAs() const
+	{
+		assert(std::holds_alternative<T>(value));
+		return *std::get_if<T>(&value);
+	}
+
+	std::string formatFunctionCall();
+	ExpressionValue executeFunctionCall();
+
+	OperatorType type = OperatorType::Invalid;
+	std::vector<std::unique_ptr<ExpressionInternal>> children;
+
+	ValueTypes value;
+
+	unsigned int fileNum, section;
+};
+
+class Expression
+{
+public:
+	Expression() = default;
+	Expression(std::unique_ptr<ExpressionInternal> exp, bool inUnknownOrFalseBlock);
+
+	ExpressionValue evaluate();
+	bool isLoaded() const { return expression != nullptr; }
+	void replaceMemoryPos(const Identifier& identifierName);
+	bool isConstExpression() { return constExpression; }
+
+	template<typename T>
+	bool evaluateInteger(T& dest)
+	{
+		if (expression == nullptr)
+			return false;
+
+		ExpressionValue value = expression->evaluate();
+		if (value.isInt() == false)
+			return false;
+
+		dest = (T) value.intValue;
+		return true;
+	}
+
+	bool evaluateString(StringLiteral& dest, bool convert);
+	bool evaluateIdentifier(Identifier& dest);
+	std::string toString();
+private:
+	std::shared_ptr<ExpressionInternal> expression;
+	bool constExpression = true;
+};
+
+Expression createConstExpression(int64_t value);
+
+// file: Core/ExpressionFunctionHandler.h
+
+#include <optional>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+class ExpressionFunctionHandle;
+class ExpressionInternal;
+class Identifier;
+class Label;
+
+struct ExpressionValue;
+struct Token;
+
+using ExpressionFunction = ExpressionValue (*)(const Identifier& funcName, const std::vector<ExpressionValue>&);
+using ExpressionLabelFunction = ExpressionValue (*)(const Identifier& funcName, const std::vector<std::shared_ptr<Label>> &);
+
+enum class ExpFuncSafety
+{
+	// Result may depend entirely on the internal state
+	Unsafe,
+	// Result is unsafe in conditional blocks, safe otherwise
+	ConditionalUnsafe,
+	// Result is completely independent of the internal state
+	Safe,
+};
+
+class ExpressionFunctionHandler
+{
+	friend class ExpressionFunctionHandle;
+
+public:
+	static ExpressionFunctionHandler &instance();
+
+	std::optional<ExpressionFunctionHandle> find(const Identifier &name) const;
+
+	void reset();
+	void updateArchitecture();
+
+	bool addFunction(const Identifier &name, ExpressionFunction functor, size_t minParams, size_t maxParams, ExpFuncSafety safety);
+	bool addLabelFunction(const Identifier &name, ExpressionLabelFunction functor, size_t minParams, size_t maxParams, ExpFuncSafety safety);
+	bool addUserFunction(const Identifier &name, const std::vector<Identifier> &parameters, const std::vector<Token> &content);
+private:
+	struct Entry
+	{
+		std::function<ExpressionValue(const std::vector<std::unique_ptr<ExpressionInternal>> &)> f;
+		size_t minParams = 0;
+		size_t maxParams = 0;
+		ExpFuncSafety safety = ExpFuncSafety::Unsafe;
+	};
+
+	ExpressionFunctionHandler();
+	bool registerEntry(const Identifier &name, Entry entry);
+
+	std::map<Identifier,Entry> entries;
+	std::vector<Identifier> architectureFunctions;
+	bool registeringArchitecture = false;
+};
+
+class ExpressionFunctionHandle
+{
+public:
+	ExpressionFunctionHandle(const ExpressionFunctionHandler::Entry &entry);
+
+	size_t minParams() const;
+	size_t maxParams() const;
+	ExpFuncSafety safety() const;
+	ExpressionValue execute(const std::vector<std::unique_ptr<ExpressionInternal>> &parameters) const;
+
+private:
+	const ExpressionFunctionHandler::Entry &impl;
+};
+
+// file: Core/ExpressionFunctions.h
+
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+
+bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, int64_t& dest,
+	const Identifier &funcName, bool optional);
+
+bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, const StringLiteral*& dest,
+	const Identifier &funcName, bool optional);
+
+struct ExpressionFunctionEntry
+{
+	const char *name;
+	ExpressionFunction function;
+	size_t minParams;
+	size_t maxParams;
+	ExpFuncSafety safety;
+};
+
+struct ExpressionLabelFunctionEntry
+{
+	const char *name;
+	ExpressionLabelFunction function;
+	size_t minParams;
+	size_t maxParams;
+	ExpFuncSafety safety;
+};
+
+void registerExpressionFunctions(ExpressionFunctionHandler &handler);
+
+// file: Core/SymbolData.h
+
+
+#include <cstdint>
+#include <set>
+#include <string>
+#include <vector>
+
+class AssemblerFile;
+
+struct SymDataSymbol
+{
+	std::string name;
+	int64_t address;
+
+	bool operator<(const SymDataSymbol& other) const
+	{
+		return address < other.address;
+	}
+};
+
+struct SymDataAddressInfo
+{
+	int64_t address;
+	size_t fileIndex;
+	size_t lineNumber;
+
+	bool operator<(const SymDataAddressInfo& other) const
+	{
+		return address < other.address;
+	}
+};
+
+struct SymDataFunction
+{
+	int64_t address;
+	size_t size;
+
+	bool operator<(const SymDataFunction& other) const
+	{
+		return address < other.address;
+	}
+};
+
+struct SymDataData
+{
+	int64_t address;
+	size_t size;
+	int type;
+
+	bool operator<(const SymDataData& other) const
+	{
+		if (address != other.address)
+			return address < other.address;
+
+		if (size != other.size)
+			return size < other.size;
+
+		return type < other.type;
+	}
+};
+
+struct SymDataModule
+{
+	AssemblerFile* file;
+	std::vector<SymDataSymbol> symbols;
+	std::vector<SymDataFunction> functions;
+	std::set<SymDataData> data;
+};
+
+struct SymDataModuleInfo
+{
+	unsigned int crc32;
+};
+
+class SymbolData
+{
+public:
+	enum DataType { Data8, Data16, Data32, Data64, DataAscii };
+
+	SymbolData();
+	void clear();
+	void setNocashSymFileName(const fs::path& name, int version) { nocashSymFileName = name; nocashSymVersion = version; };
+	void write();
+	void setEnabled(bool b) { enabled = b; };
+
+	void addLabel(int64_t address, const std::string& name);
+	void addData(int64_t address, size_t size, DataType type);
+	void startModule(AssemblerFile* file);
+	void endModule(AssemblerFile* file);
+	void startFunction(int64_t address);
+	void endFunction(int64_t address);
+private:
+	void writeNocashSym();
+	size_t addFileName(const std::string& fileName);
+
+	fs::path nocashSymFileName;
+	bool enabled;
+	int nocashSymVersion;
+
+	// entry 0 is for data without parent modules
+	std::vector<SymDataModule> modules;
+	std::vector<std::string> files;
+	int currentModule;
+	int currentFunction;
+};
+
+// file: Core/FileManager.h
+
+
+#include <memory>
+#include <vector>
+
+class SymbolData;
+
+struct SymDataModuleInfo;
 
 class AssemblerFile
 {
@@ -1872,18 +1994,18 @@ public:
 	virtual bool hasFixedVirtualAddress() { return false; };
 	virtual void beginSymData(SymbolData& symData) { };
 	virtual void endSymData(SymbolData& symData) { };
-	virtual const std::wstring& getFileName() = 0;
+	virtual const fs::path& getFileName() = 0;
 };
 
 class GenericAssemblerFile: public AssemblerFile
 {
 public:
-	GenericAssemblerFile(const std::wstring& fileName, int64_t headerSize, bool overwrite);
-	GenericAssemblerFile(const std::wstring& fileName, const std::wstring& originalFileName, int64_t headerSize);
+	GenericAssemblerFile(const fs::path& fileName, int64_t headerSize, bool overwrite);
+	GenericAssemblerFile(const fs::path& fileName, const fs::path& originalFileName, int64_t headerSize);
 
 	virtual bool open(bool onlyCheck);
-	virtual void close() { if (handle.isOpen()) handle.close(); };
-	virtual bool isOpen() { return handle.isOpen(); };
+	virtual void close() { if (stream.is_open()) stream.close(); };
+	virtual bool isOpen() { return stream.is_open(); };
 	virtual bool write(void* data, size_t length);
 	virtual int64_t getVirtualAddress() { return virtualAddress; };
 	virtual int64_t getPhysicalAddress() { return virtualAddress-headerSize; };
@@ -1892,8 +2014,8 @@ public:
 	virtual bool seekPhysical(int64_t physicalAddress);
 	virtual bool hasFixedVirtualAddress() { return true; };
 
-	virtual const std::wstring& getFileName() { return fileName; };
-	const std::wstring& getOriginalFileName() { return originalName; };
+	virtual const fs::path& getFileName() { return fileName; };
+	const fs::path& getOriginalFileName() { return originalName; };
 	int64_t getOriginalHeaderSize() { return originalHeaderSize; };
 	void setHeaderSize(int64_t size) { headerSize = size; };
 
@@ -1904,9 +2026,9 @@ private:
 	int64_t originalHeaderSize;
 	int64_t headerSize;
 	int64_t virtualAddress;
-	BinaryFile handle;
-	std::wstring fileName;
-	std::wstring originalName;
+	fs::ofstream stream;
+	fs::path fileName;
+	fs::path originalName;
 };
 
 
@@ -1932,6 +2054,7 @@ public:
 	bool seekPhysical(int64_t physicalAddress);
 	bool advanceMemory(size_t bytes);
 	std::shared_ptr<AssemblerFile> getOpenFile() { return activeFile; };
+	int64_t getOpenFileID();
 	void setEndianness(Endianness endianness) { this->endianness = endianness; };
 	Endianness getEndianness() { return endianness; }
 private:
@@ -1965,6 +2088,7 @@ enum ElfMachine
 	EM_NONE  =0,
 	EM_MIPS  =8,
 	EM_ARM   =40,
+	EM_SH2	 =42
 };
 
 // File version
@@ -2210,6 +2334,16 @@ struct Elf32_Rela
 	Elf32_Addr  r_offset;
 	Elf32_Word  r_info;
 	Elf32_Sword r_addend;
+
+	unsigned char getType()
+	{
+		return r_info & 0xFF;
+	}
+
+	Elf32_Word getSymbolNum()
+	{
+		return r_info >> 8;
+	}
 };
 
 #define ELF32_R_SYM(i) ((i)>>8)
@@ -2217,6 +2351,7 @@ struct Elf32_Rela
 #define ELF32_R_INFO(s,t) (((s)<<8 )+(unsigned char)(t))
 
 // file: Core/ELF/ElfFile.h
+
 
 #include <vector>
 
@@ -2229,9 +2364,9 @@ class ElfFile
 {
 public:
 
-	bool load(const std::wstring&fileName, bool sort);
+	bool load(const fs::path&fileName, bool sort);
 	bool load(ByteArray& data, bool sort);
-	void save(const std::wstring&fileName);
+	void save(const fs::path& fileName);
 
 	Elf32_Half getType() { return fileHeader.e_type; };
 	Elf32_Half getMachine() { return fileHeader.e_machine; };
@@ -2252,9 +2387,9 @@ public:
 	const char* getStrTableString(size_t pos);
 private:
 	void loadElfHeader();
-	void writeHeader(ByteArray& data, int pos, Endianness endianness);
-	void loadProgramHeader(Elf32_Phdr& header, ByteArray& data, int pos);
-	void loadSectionHeader(Elf32_Shdr& header, ByteArray& data, int pos);
+	void writeHeader(ByteArray& data, size_t pos, Endianness endianness);
+	void loadProgramHeader(Elf32_Phdr& header, ByteArray& data, size_t pos);
+	void loadSectionHeader(Elf32_Shdr& header, ByteArray& data, size_t pos);
 	void loadSectionNames();
 	void determinePartOrder();
 
@@ -2279,7 +2414,7 @@ public:
 	void setData(ByteArray& data) { this->data = data; };
 	void setOwner(ElfSegment* segment);
 	bool hasOwner() { return owner != nullptr; };
-	void writeHeader(ByteArray& data, int pos, Endianness endianness);
+	void writeHeader(ByteArray& data, size_t pos, Endianness endianness);
 	void writeData(ByteArray& output);
 	void setOffsetBase(int base);
 	ByteArray& getData() { return data; };
@@ -2310,7 +2445,7 @@ public:
 	Elf32_Word getType() { return header.p_type; };
 	Elf32_Addr getVirtualAddress() { return header.p_vaddr; };
 	size_t getSectionCount() { return sections.size(); };
-	void writeHeader(ByteArray& data, int pos, Endianness endianness);
+	void writeHeader(ByteArray& data, size_t pos, Endianness endianness);
 	void writeData(ByteArray& output);
 	void splitSections();
 
@@ -2330,6 +2465,7 @@ struct RelocationData
 	int64_t opcodeOffset;
 	int64_t relocationBase;
 	uint32_t opcode;
+	int32_t addend;
 
 	int64_t symbolAddress;
 	int targetSymbolType;
@@ -2338,9 +2474,12 @@ struct RelocationData
 
 // file: Core/ELF/ElfRelocator.h
 
+
+#include <memory>
+
 struct ElfRelocatorCtor
 {
-	std::wstring symbolName;
+	Identifier symbolName;
 	size_t size;
 };
 
@@ -2352,6 +2491,7 @@ struct RelocationAction
 };
 
 class CAssemblerCommand;
+class Identifier;
 class Parser;
 
 class IElfRelocator
@@ -2360,15 +2500,16 @@ public:
 	virtual ~IElfRelocator() {};
 	virtual int expectedMachine() const = 0;
 	virtual bool isDummyRelocationType(int type) const { return false; }
-	virtual bool relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors) = 0;
-	virtual bool finish(std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors) { return true; }
+	virtual bool relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors) = 0;
+	virtual bool finish(std::vector<RelocationAction>& actions, std::vector<std::string>& errors) { return true; }
 	virtual void setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType) = 0;
 
-	virtual std::unique_ptr<CAssemblerCommand> generateCtorStub(std::vector<ElfRelocatorCtor>& ctors) { return nullptr; }
+	virtual std::unique_ptr<CAssemblerCommand> generateCtorStub(std::vector<ElfRelocatorCtor>& ctors);
 };
 
 
 class Label;
+class SymbolData;
 
 struct ElfRelocatorSection
 {
@@ -2381,7 +2522,7 @@ struct ElfRelocatorSection
 struct ElfRelocatorSymbol
 {
 	std::shared_ptr<Label> label;
-	std::wstring name;
+	std::string name;
 	int64_t relativeAddress;
 	int64_t relocatedAddress;
 	size_t section;
@@ -2394,22 +2535,22 @@ struct ElfRelocatorFile
 	ElfFile* elf;
 	std::vector<ElfRelocatorSection> sections;
 	std::vector<ElfRelocatorSymbol> symbols;
-	std::wstring name;
+	std::string name;
 };
 
 class ElfRelocator
 {
 public:
-	bool init(const std::wstring& inputName);
+	bool init(const fs::path& inputName);
 	bool exportSymbols();
 	void writeSymbols(SymbolData& symData) const;
-	std::unique_ptr<CAssemblerCommand> generateCtor(const std::wstring& ctorName);
+	std::unique_ptr<CAssemblerCommand> generateCtor(const Identifier& ctorName);
 	bool relocate(int64_t& memoryAddress);
 	bool hasDataChanged() { return dataChanged; };
 	const ByteArray& getData() const { return outputData; };
 private:
 	bool relocateFile(ElfRelocatorFile& file, int64_t& relocationAddress);
-	void loadRelocation(Elf32_Rel& rel, ByteArray& data, int offset, Endianness endianness);
+	void loadRelocation(Elf32_Rela& rela, bool addend, ByteArray& data, int offset, Endianness endianness);
 
 	ByteArray outputData;
 	std::unique_ptr<IElfRelocator> relocator;
@@ -2418,64 +2559,4654 @@ private:
 	bool dataChanged;
 };
 
+// file: Core/Allocations.h
+
+#include <cstdint>
+#include <map>
+
+struct AllocationStats
+{
+	int64_t largestPosition;
+	int64_t largestSize;
+	int64_t largestUsage;
+
+	int64_t largestFreePosition;
+	int64_t largestFreeSize;
+	int64_t largestFreeUsage;
+
+	int64_t sharedFreePosition;
+	int64_t sharedFreeSize;
+	int64_t sharedFreeUsage;
+
+	int64_t totalSize;
+	int64_t totalUsage;
+	int64_t sharedSize;
+	int64_t sharedUsage;
+
+	int64_t largestPoolPosition;
+	int64_t largestPoolSize;
+	int64_t totalPoolSize;
+};
+
+class Allocations
+{
+public:
+	static void clear();
+	static void setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared);
+	static void forgetArea(int64_t fileID, int64_t position, int64_t space);
+
+	static void setPool(int64_t fileID, int64_t position, int64_t size);
+	static void forgetPool(int64_t fileID, int64_t position, int64_t size);
+
+	static void clearSubAreas();
+	static bool allocateSubArea(int64_t fileID, int64_t& position, int64_t minRange, int64_t maxRange, int64_t size);
+	static int64_t getSubAreaUsage(int64_t fileID, int64_t position);
+
+	static bool canTrimSpace();
+
+	static void validateOverlap();
+	static AllocationStats collectStats();
+
+private:
+	struct Key
+	{
+		int64_t fileID;
+		int64_t position;
+
+		inline bool operator <(const Allocations::Key &other) const
+		{
+			return std::tie(fileID, position) < std::tie(other.fileID, other.position);
+		}
+	};
+	struct Usage
+	{
+		int64_t space;
+		int64_t usage;
+		bool usesFill;
+		bool shared;
+	};
+
+	struct SubArea
+	{
+		int64_t offset;
+		int64_t size;
+	};
+
+	static void collectAreaStats(AllocationStats &stats);
+	static void collectPoolStats(AllocationStats &stats);
+
+	static int64_t getSubAreaUsage(Key key)
+	{
+		return getSubAreaUsage(key.fileID, key.position);
+	}
+
+	static std::map<Key, Usage> allocations;
+	static std::map<Key, int64_t> pools;
+	static std::multimap<Key, SubArea> subAreas;
+	static bool keepPositions;
+	static bool nextKeepPositions;
+	static bool keptPositions;
+};
+
+// file: Core/Misc.h
+
+
+#include <string_view>
+#include <vector>
+
+
+class Logger
+{
+public:
+	enum ErrorType { Warning, Error, FatalError, Notice };
+
+	static void clear();
+	static void printLine(std::string_view text);
+
+	template <typename... Args>
+	static void printLine(const char* text, const Args&... args)
+	{
+		std::string message = tfm::format(text,args...);
+		printLine(message);
+	}
+
+	static void print(std::string_view text);
+
+	template <typename... Args>
+	static void print(const char* text, const Args&... args)
+	{
+		std::string message = tfm::format(text,args...);
+		print(message);
+	}
+
+	static void printError(ErrorType type, std::string_view text);
+	static void queueError(ErrorType type, std::string_view text);
+
+	template <typename... Args>
+	static void printError(ErrorType type, const char* text, const Args&... args)
+	{
+		std::string message = tfm::format(text,args...);
+		printError(type,message);
+	}
+
+	template <typename... Args>
+	static void queueError(ErrorType type, const char* text, const Args&... args)
+	{
+		std::string message = tfm::format(text,args...);
+		queueError(type,message);
+	}
+
+	static void printQueue();
+	static void clearQueue() { queue.clear(); };
+	static std::vector<std::string> getErrors() { return errors; };
+	static bool hasError() { return error; };
+	static bool hasFatalError() { return fatalError; };
+	static void setErrorOnWarning(bool b) { errorOnWarning = b; };
+	static void setSilent(bool b) { silent = b; };
+	static bool isSilent() { return silent; }
+	static void suppressErrors() { ++suppressLevel; }
+	static void unsuppressErrors() { if (suppressLevel) --suppressLevel; }
+private:
+	static std::string formatError(ErrorType type, const char* text);
+	static void setFlags(ErrorType type);
+
+	struct QueueEntry
+	{
+		ErrorType type;
+		std::string text;
+	};
+
+	static std::vector<QueueEntry> queue;
+	static std::vector<std::string> errors;
+	static bool error;
+	static bool fatalError;
+	static bool errorOnWarning;
+	static bool silent;
+	static int suppressLevel;
+};
+
+class TempData
+{
+public:
+	void setFileName(const fs::path& name) { file.setFileName(name); };
+	void clear() { file.setFileName({}); }
+	void start();
+	void end();
+	void writeLine(int64_t memoryAddress, const std::string& text);
+	bool isOpen() { return file.isOpen(); }
+private:
+	TextFile file;
+};
+
+// file: Core/Assembler.h
+
+
+#include <memory>
+#include <string>
+#include <vector>
+
+class AssemblerFile;
+
+#define ARMIPS_VERSION_MAJOR    0
+#define ARMIPS_VERSION_MINOR    11
+#define ARMIPS_VERSION_REVISION 0
+
+enum class ArmipsMode { FILE, MEMORY };
+
+struct LabelDefinition
+{
+	Identifier name;
+	int64_t value;
+};
+
+struct EquationDefinition
+{
+	Identifier name;
+	std::string value;
+};
+
+struct ArmipsArguments
+{
+	// common
+	ArmipsMode mode;
+	int symFileVersion;
+	bool errorOnWarning;
+	bool silent;
+	bool showStats;
+	std::vector<std::string>* errorsResult;
+	std::vector<EquationDefinition> equList;
+	std::vector<LabelDefinition> labels;
+
+	// file mode
+	fs::path inputFileName;
+	fs::path tempFileName;
+	fs::path symFileName;
+	bool useAbsoluteFileNames;
+
+	// memory mode
+	std::shared_ptr<AssemblerFile> memoryFile;
+	std::string content;
+
+	ArmipsArguments()
+	{
+		mode = ArmipsMode::FILE;
+		symFileVersion = 0;
+		errorOnWarning = false;
+		silent = false;
+		showStats = false;
+		errorsResult = nullptr;
+		useAbsoluteFileNames = true;
+	}
+};
+
+bool runArmips(ArmipsArguments& settings);
+
+// file: Core/SymbolTable.h
+
+
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+
+struct LabelDefinition;
+
+struct SymbolKey
+{
+	SymbolKey(const Identifier& name, int file, int section) :
+		name(name.string()),
+		file(file),
+		section(section)
+	{
+		std::transform(this->name.begin(), this->name.end(), this->name.begin(), ::tolower);
+	}
+
+	std::string name;
+	int file;
+	int section;
+};
+
+bool operator<(SymbolKey const& lhs, SymbolKey const& rhs);
+
+class Label
+{
+public:
+	Label(const Identifier&	name);
+	const Identifier &getName() { return name; };
+	void setOriginalName(const Identifier& name) { originalName = name; }
+	const Identifier &getOriginalName() { return originalName; }
+	int64_t getValue() { return value; };
+	void setValue(int64_t val) { value = val; };
+	bool hasPhysicalValue() { return physicalValueSet; }
+	int64_t getPhysicalValue() { return physicalValue; }
+	void setPhysicalValue(int64_t val) { physicalValue = val; physicalValueSet = true; }
+	bool isDefined() { return defined; };
+	void setDefined(bool b) { defined = b; };
+	bool isData() { return data; };
+	void setIsData(bool b) { data = b; };
+	void setInfo(int inf) { info = inf; };
+	int getInfo() { return info; };
+	void setUpdateInfo(bool b) { updateInfo = b; };
+	bool getUpdateInfo() { return updateInfo; };
+	void setSection(int num) { section = num; }
+	int getSection() { return section; }
+private:
+	Identifier name;
+	Identifier originalName;
+	int64_t value = 0;
+	int64_t physicalValue = 0;
+	bool physicalValueSet = false;
+	bool defined = false;
+	bool data = false;
+	bool updateInfo = true;
+	int info = 0;
+	int section = 0;
+};
+
+class SymbolTable
+{
+public:
+	SymbolTable();
+	~SymbolTable();
+	void clear();
+	bool symbolExists(const Identifier& symbol, int file, int section);
+	static bool isValidSymbolName(const Identifier& symbol);
+	static bool isValidSymbolCharacter(char character, bool first = false);
+	static bool isLocalSymbol(const Identifier& symbol) { return symbol.size() >= 2 && symbol.string()[0] == '@' && symbol.string()[1] == '@'; }
+	static bool isStaticSymbol(const Identifier& symbol) { return symbol.size() >= 1 && symbol.string()[0] == '@'; }
+	static bool isGlobalSymbol(const Identifier& symbol) { return !isLocalSymbol(symbol) && !isStaticSymbol(symbol); }
+
+	std::shared_ptr<Label> getLabel(const Identifier& symbol, int file, int section);
+	bool addEquation(const Identifier& name, int file, int section, size_t referenceIndex);
+	bool findEquation(const Identifier& name, int file, int section, size_t& dest);
+	void addLabels(const std::vector<LabelDefinition>& labels);
+	int findSection(int64_t address);
+
+	Identifier getUniqueLabelName(bool local = false);
+	size_t getLabelCount() { return labels.size(); };
+	size_t getEquationCount() { return equationsCount; };
+	bool isGeneratedLabel(const Identifier& name) { return generatedLabels.find(name) != generatedLabels.end(); }
+private:
+	void setFileSectionValues(const Identifier& symbol, int& file, int& section);
+
+	enum SymbolType { LabelSymbol, EquationSymbol };
+	struct SymbolInfo
+	{
+		SymbolType type;
+		size_t index;
+	};
+
+	std::map<SymbolKey,SymbolInfo> symbols;
+	std::vector<std::shared_ptr<Label>> labels;
+	size_t equationsCount;
+	size_t uniqueCount;
+	std::set<Identifier> generatedLabels;
+};
+
+// file: Core/Common.h
+
+
+#include <string>
+#include <vector>
+
+class AssemblerFile;
+class CArchitecture;
+
+class FileList
+{
+public:
+	void add(const fs::path& path);
+
+	const fs::path& path(int fileIndex) const;
+	const fs::path& relative_path(int fileIndex) const;
+	const std::string& string(int fileIndex) const;
+	const std::string& relativeString(int fileIndex) const;
+
+	size_t size() const;
+	void clear();
+
+private:
+	class Entry
+	{
+	public:
+		Entry(const fs::path& path);
+
+		const fs::path& path() const;
+		const fs::path& relativePath() const;
+		const std::string& string() const;
+		const std::string& relativeString() const;
+
+	private:
+		fs::path _path;
+		fs::path _relativePath;
+		std::string _string; // preconverted for performance
+		std::string _relativeString; // preconverted for performance
+	};
+
+	std::vector<Entry> _entries;
+};
+
+typedef struct {
+	int FileNum;
+	int LineNumber;
+	int TotalLineCount;
+} tFileInfo;
+
+typedef struct {
+	FileList fileList;
+	tFileInfo FileInfo;
+	SymbolTable symbolTable;
+	EncodingTable Table;
+	int Section;
+	bool nocash;
+	bool relativeInclude;
+	bool memoryMode;
+	std::shared_ptr<AssemblerFile> memoryFile;
+	bool multiThreading;
+} tGlobal;
+
+extern tGlobal Global;
+
+class FileManager;
+extern FileManager* g_fileManager;
+
+fs::path getFullPathName(const fs::path& path);
+
+bool checkLabelDefined(const Identifier& labelName, int section);
+bool checkValidLabelName(const Identifier& labelName);
+
+bool isPowerOfTwo(int64_t n);
+
+// file: Commands/CAssemblerCommand.h
+
+class TempData;
+class SymbolData;
+
+struct ValidateState
+{
+	bool noFileChange = false;
+	const char *noFileChangeDirective = nullptr;
+	int passes = 0;
+};
+
+class CAssemblerCommand
+{
+public:
+	CAssemblerCommand();
+	virtual ~CAssemblerCommand() { };
+	virtual bool Validate(const ValidateState &state) = 0;
+	virtual void Encode() const = 0;
+	virtual void writeTempData(TempData& tempData) const = 0;
+	virtual void writeSymData(SymbolData& symData) const { };
+	void applyFileInfo();
+	int getSection() { return section; }
+	void updateSection(int num) { section = num; }
+protected:
+	int FileNum;
+	int FileLine;
+private:
+	int section;
+};
+
+class DummyCommand: public CAssemblerCommand
+{
+public:
+	bool Validate(const ValidateState &state) override { return false; }
+	void Encode() const override { };
+	void writeTempData(TempData& tempData) const override { };
+	void writeSymData(SymbolData& symData) const override { };
+};
+
+class InvalidCommand: public CAssemblerCommand
+{
+public:
+	bool Validate(const ValidateState &state) override { return false; }
+	void Encode() const override { };
+	void writeTempData(TempData& tempData) const override { };
+	void writeSymData(SymbolData& symData) const override { };
+};
+
+// file: Commands/CAssemblerLabel.h
+
+
+#include <optional>
+
+class Label;
+
+class CAssemblerLabel: public CAssemblerCommand
+{
+public:
+	CAssemblerLabel(const Identifier& name, const Identifier& originalName, std::optional<bool> thumbMode = std::nullopt);
+	CAssemblerLabel(const Identifier& name, const Identifier& originalName, Expression& value, std::optional<bool> thumbMode = std::nullopt);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+private:
+	Expression labelValue;
+	std::shared_ptr<Label> label;
+	bool defined;
+};
+
+class CDirectiveFunction: public CAssemblerCommand
+{
+public:
+	CDirectiveFunction(const Identifier& name, const Identifier& originalName);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+	void setContent(std::unique_ptr<CAssemblerCommand> content) { this->content = std::move(content); }
+private:
+	std::unique_ptr<CAssemblerLabel> label;
+	std::unique_ptr<CAssemblerCommand> content;
+	int64_t start, end;
+};
+
+// file: Commands/CDirectiveArea.h
+
+
+class CDirectiveArea: public CAssemblerCommand
+{
+public:
+	CDirectiveArea(bool shared, Expression& size);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+	void setFillExpression(Expression& exp);
+	void setPositionExpression(Expression& exp);
+	void setContent(std::unique_ptr<CAssemblerCommand> content) { this->content = std::move(content); }
+private:
+	bool shared;
+	int64_t position = 0;
+	Expression sizeExpression;
+	int64_t areaSize = 0;
+	int64_t contentSize = 0;
+	Expression fillExpression;
+	int8_t fillValue = 0;
+	int64_t fileID = 0;
+	Expression positionExpression;
+	std::unique_ptr<CAssemblerCommand> content;
+};
+
+class CDirectiveAutoRegion : public CAssemblerCommand
+{
+public:
+	CDirectiveAutoRegion();
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+	void setMinRangeExpression(Expression& exp);
+	void setRangeExpressions(Expression& minExp, Expression& maxExp);
+	void setContent(std::unique_ptr<CAssemblerCommand> content) { this->content = std::move(content); }
+
+private:
+	int64_t resetPosition;
+	int64_t position;
+	int64_t contentSize;
+	int64_t fileID = 0;
+	Expression minRangeExpression;
+	Expression maxRangeExpression;
+	std::unique_ptr<CAssemblerCommand> content;
+};
+
+// file: Commands/CDirectiveConditional.h
+
+
+enum class ConditionType
+{
+	IF,
+	ELSE,
+	ELSEIF,
+	ENDIF,
+	IFDEF,
+	IFNDEF,
+};
+
+class CDirectiveConditional: public CAssemblerCommand
+{
+public:
+	CDirectiveConditional(ConditionType type);
+	CDirectiveConditional(ConditionType type, const Identifier& name);
+	CDirectiveConditional(ConditionType type, const Expression& exp);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+	void setContent(std::unique_ptr<CAssemblerCommand> ifBlock, std::unique_ptr<CAssemblerCommand> elseBlock);
+private:
+	bool evaluate();
+
+	Expression expression;
+	std::shared_ptr<Label> label;
+	bool previousResult;
+
+	ConditionType type;
+	std::unique_ptr<CAssemblerCommand> ifBlock;
+	std::unique_ptr<CAssemblerCommand> elseBlock;
+};
+
+// file: Commands/CDirectiveData.h
+
+
+enum class EncodingMode { Invalid, U8, U16, U32, U64, Ascii, Float, Double, Sjis, Custom };
+
+class TableCommand: public CAssemblerCommand
+{
+public:
+	TableCommand(const fs::path& fileName, TextFile::Encoding encoding);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override { };
+	void writeTempData(TempData& tempData) const override { };
+	void writeSymData(SymbolData& symData) const override { };
+private:
+	EncodingTable table;
+};
+
+class CDirectiveData: public CAssemblerCommand
+{
+public:
+	CDirectiveData();
+	~CDirectiveData();
+	void setNormal(std::vector<Expression>& entries, size_t unitSize);
+	void setFloat(std::vector<Expression>& entries);
+	void setDouble(std::vector<Expression>& entries);
+	void setAscii(std::vector<Expression>& entries, bool terminate);
+	void setSjis(std::vector<Expression>& entries, bool terminate);
+	void setCustom(std::vector<Expression>& entries, bool terminate);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+private:
+	void encodeCustom(EncodingTable& table);
+	void encodeSjis();
+	void encodeFloat();
+	void encodeDouble();
+	void encodeNormal();
+	size_t getUnitSize() const;
+	size_t getDataSize() const;
+
+	int64_t position = 0;
+	EncodingMode mode;
+	bool writeTermination;
+	std::vector<Expression> entries;
+	ByteArray customData;
+	std::vector<int64_t> normalData;
+	Endianness endianness;
+};
+
+// file: Commands/CDirectiveFile.h
+
+
+class AssemblerFile;
+class GenericAssemblerFile;
+
+class CDirectiveFile: public CAssemblerCommand
+{
+public:
+	enum class Type { Invalid, Open, Create, Copy, Close };
+
+	CDirectiveFile();
+	void initOpen(const fs::path& fileName, int64_t memory);
+	void initCreate(const fs::path& fileName, int64_t memory);
+	void initCopy(const fs::path& inputName, const fs::path& outputName, int64_t memory);
+	void initClose();
+
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+private:
+	Type type;
+	int64_t virtualAddress;
+	std::shared_ptr<GenericAssemblerFile> file;
+	std::shared_ptr<AssemblerFile> closeFile;
+};
+
+class CDirectivePosition: public CAssemblerCommand
+{
+public:
+	enum Type { Physical, Virtual };
+	CDirectivePosition(Expression value, Type type);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override { };
+private:
+	void exec() const;
+	Expression expression;
+	Type type;
+	int64_t position;
+	int64_t virtualAddress;
+};
+
+class CDirectiveIncbin: public CAssemblerCommand
+{
+public:
+	CDirectiveIncbin(const fs::path& fileName);
+	void setStart(Expression& exp) { startExpression = exp; };
+	void setSize(Expression& exp) { sizeExpression = exp; };
+
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+private:
+	fs::path fileName;
+	int64_t fileSize;
+
+	Expression startExpression;
+	Expression sizeExpression;
+	int64_t size;
+	int64_t start;
+	int64_t virtualAddress;
+};
+
+class CDirectiveAlignFill: public CAssemblerCommand
+{
+public:
+	enum Mode { AlignPhysical, AlignVirtual, Fill };
+
+	CDirectiveAlignFill(int64_t value, Mode mode);
+	CDirectiveAlignFill(Expression& value, Mode mode);
+	CDirectiveAlignFill(Expression& value, Expression& fillValue, Mode mode);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+private:
+	Mode mode;
+	Expression valueExpression;
+	Expression fillExpression;
+	int64_t value;
+	int64_t finalSize;
+	int8_t fillByte;
+	int64_t virtualAddress;
+};
+
+class CDirectiveSkip: public CAssemblerCommand
+{
+public:
+	CDirectiveSkip(Expression& value);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override { };
+private:
+	Expression expression;
+	int64_t value;
+	int64_t virtualAddress;
+};
+
+class CDirectiveHeaderSize: public CAssemblerCommand
+{
+public:
+	CDirectiveHeaderSize(Expression expression);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override { };
+private:
+	void exec() const;
+	Expression expression;
+	int64_t headerSize;
+	int64_t virtualAddress;
+};
+
+class DirectiveObjImport: public CAssemblerCommand
+{
+public:
+	DirectiveObjImport(const fs::path& inputName);
+	DirectiveObjImport(const fs::path& inputName, const Identifier& ctorName);
+	~DirectiveObjImport() { };
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+	inline bool isSuccessfullyImported() { return success; };
+private:
+	bool success;
+	ElfRelocator rel;
+	std::unique_ptr<CAssemblerCommand> ctor;
+};
+
+// file: Commands/CDirectiveMessage.h
+
+
+class CDirectiveMessage: public CAssemblerCommand
+{
+public:
+	enum class Type { Warning, Error, Notice };
+	CDirectiveMessage(Type type, Expression exp);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override {};
+	void writeTempData(TempData& tempData) const override { };
+private:
+	Type errorType;
+	Expression exp;
+};
+
+class CDirectiveSym: public CAssemblerCommand
+{
+public:
+	CDirectiveSym(bool enable) {enabled = enable; };
+	bool Validate(const ValidateState &state) override { return false; }
+	void Encode() const override { };
+	void writeTempData(TempData& tempData) const override { };
+	void writeSymData(SymbolData& symData) const override;
+private:
+	bool enabled;
+};
+
+// file: Commands/CommandSequence.h
+
+
+#include <memory>
+#include <vector>
+
+class Label;
+
+class CommandSequence: public CAssemblerCommand
+{
+public:
+	CommandSequence();
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+	void addCommand(std::unique_ptr<CAssemblerCommand> cmd) { commands.push_back(std::move(cmd)); }
+private:
+	std::vector<std::unique_ptr<CAssemblerCommand>> commands;
+};
+
+// file: Parser/DirectivesParser.h
+
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <optional>
+
+class CAssemblerCommand;
+class Parser;
+
+using DirectiveFunc = std::unique_ptr<CAssemblerCommand> (*)(Parser&,int);
+
+struct DirectiveEntry {
+	DirectiveFunc function;
+	int flags;
+};
+
+using DirectiveMap = std::unordered_multimap<std::string, const DirectiveEntry>;
+
+#define DIRECTIVE_USERMASK			0x0000FFFF
+
+// Global flags
+#define DIRECTIVE_NOCASHON			0x00010000
+#define DIRECTIVE_NOCASHOFF			0x00020000
+#define DIRECTIVE_MIPSRESETDELAY	0x00040000
+#define DIRECTIVE_DISABLED			0x00080000
+#define DIRECTIVE_NOTINMEMORY		0x00100000
+#define DIRECTIVE_MANUALSEPARATOR	0x00200000
+
+// file directive flags
+#define DIRECTIVE_POS_PHYSICAL		0x00000001
+#define DIRECTIVE_POS_VIRTUAL		0x00000002
+#define DIRECTIVE_ALIGN_PHYSICAL	0x00000001
+#define DIRECTIVE_ALIGN_VIRTUAL		0x00000002
+#define DIRECTIVE_ALIGN_FILL		0x00000004
+
+// conditional directive flags
+#define DIRECTIVE_COND_IF			0x00000001
+#define DIRECTIVE_COND_IFDEF		0x00000002
+#define DIRECTIVE_COND_IFNDEF		0x00000003
+
+// data directive flags
+#define DIRECTIVE_DATA_8			0x00000001
+#define DIRECTIVE_DATA_16			0x00000002
+#define DIRECTIVE_DATA_32			0x00000003
+#define DIRECTIVE_DATA_64			0x00000004
+#define DIRECTIVE_DATA_ASCII		0x00000005
+#define DIRECTIVE_DATA_SJIS			0x00000006
+#define DIRECTIVE_DATA_CUSTOM		0x00000007
+#define DIRECTIVE_DATA_FLOAT		0x00000008
+#define DIRECTIVE_DATA_DOUBLE		0x00000009
+#define DIRECTIVE_DATA_HWORD        0x0000000A
+#define DIRECTIVE_DATA_WORD         0x0000000B
+#define DIRECTIVE_DATA_DWORD        0x0000000C
+#define DIRECTIVE_DATA_TERMINATION	0x00000100
+
+// message directive flags
+#define DIRECTIVE_MSG_WARNING		0x00000001
+#define DIRECTIVE_MSG_ERROR			0x00000002
+#define DIRECTIVE_MSG_NOTICE		0x00000003
+
+// MIPS directive flags
+#define DIRECTIVE_MIPS_PSX			0x00000001
+#define DIRECTIVE_MIPS_PS2			0x00000002
+#define DIRECTIVE_MIPS_PSP			0x00000003
+#define DIRECTIVE_MIPS_N64			0x00000004
+#define DIRECTIVE_MIPS_RSP			0x00000005
+
+// ARM directive flags
+#define DIRECTIVE_ARM_GBA			0x00000001
+#define DIRECTIVE_ARM_NDS			0x00000002
+#define DIRECTIVE_ARM_3DS			0x00000003
+#define DIRECTIVE_ARM_BIG			0x00000004
+#define DIRECTIVE_ARM_LITTLE		0x00000005
+
+#define DIRECTIVE_SH_SATURN			0x00000001
+
+// Area directive flags
+#define DIRECTIVE_AREA_SHARED		0x00000001
+
+extern const DirectiveMap directives;
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineLabel(Parser& parser, int flags, std::optional<bool> thumbMode);
+
+// file: Parser/ExpressionParser.h
+
+class Expression;
+class Tokenizer;
+
+Expression parseExpression(Tokenizer& tokenizer, bool inUnknownOrFalseBlock);
+
+// file: Parser/Tokenizer.h
+
+
+#include <cassert>
+#include <list>
+#include <string>
+#include <variant>
+#include <vector>
+
+class TextFile;
+
+enum class TokenType
+{
+	Invalid,
+	Identifier,
+	Integer,
+	String,
+	Float,
+	LParen,
+	RParen,
+	Plus,
+	Minus,
+	Mult,
+	Div,
+	Mod,
+	Caret,
+	Tilde,
+	LeftShift,
+	RightShift,
+	Less,
+	Greater,
+	LessEqual,
+	GreaterEqual,
+	Equal,
+	NotEqual,
+	BitAnd,
+	BitOr,
+	LogAnd,
+	LogOr,
+	Exclamation,
+	Question,
+	Colon,
+	LBrack,
+	RBrack,
+	Comma,
+	Assign,
+	Equ,
+	EquValue,
+	Hash,
+	LBrace,
+	RBrace,
+	Dollar,
+	NumberString,
+	Degree,
+	Separator
+};
+
+struct Token
+{
+	friend class Tokenizer;
+
+	const std::string &getOriginalText() const
+	{
+		return originalText;
+	}
+
+	template<typename T>
+	void setValue(T value, std::string originalText)
+	{
+		this->value = std::move(value);
+		this->originalText = std::move(originalText);
+	}
+
+	const Identifier &identifierValue() const
+	{
+		assert(std::holds_alternative<Identifier>(value));
+		return *std::get_if<Identifier>(&value);
+	}
+
+	const StringLiteral &stringValue() const
+	{
+		assert(std::holds_alternative<StringLiteral>(value));
+		return *std::get_if<StringLiteral>(&value);
+	}
+
+	int64_t intValue() const
+	{
+		assert(std::holds_alternative<int64_t>(value));
+		return *std::get_if<int64_t>(&value);
+	}
+
+	double floatValue() const
+	{
+		assert(std::holds_alternative<double>(value));
+		return *std::get_if<double>(&value);
+	}
+
+	size_t line = 0;
+	size_t column = 0;
+	TokenType type = TokenType::Invalid;
+
+protected:
+	bool checked = false;
+
+	using ValueType = std::variant<std::monostate, int64_t, double, StringLiteral, Identifier>;
+	ValueType value;
+	std::string originalText;
+};
+
+typedef std::list<Token> TokenList;
+
+struct TokenizerPosition
+{
+	friend class Tokenizer;
+
+	TokenizerPosition previous()
+	{
+		TokenizerPosition pos = *this;
+		--pos.it;
+		return pos;
+	}
+private:
+	TokenList::iterator it;
+};
+
+class Tokenizer
+{
+public:
+	Tokenizer();
+	const Token& nextToken();
+	const Token& peekToken(int ahead = 0);
+	void eatToken() { eatTokens(1); }
+	void eatTokens(int num);
+	bool atEnd() { return position.it == tokens.end(); }
+	TokenizerPosition getPosition() { return position; }
+	void setPosition(TokenizerPosition pos) { position = pos; }
+	void skipLookahead();
+	std::vector<Token> getTokens(TokenizerPosition start, TokenizerPosition end) const;
+	void registerReplacement(const Identifier& identifier, std::vector<Token>& tokens);
+	void registerReplacement(const Identifier& identifier, const std::string& newValue);
+	void registerReplacementString(const Identifier& identifier, const StringLiteral& newValue);
+	void registerReplacementInteger(const Identifier& identifier, int64_t newValue);
+	void registerReplacementFloat(const Identifier& identifier, double newValue);
+	static size_t addEquValue(const std::vector<Token>& tokens);
+	static void clearEquValues() { equValues.clear(); }
+	void resetLookaheadCheckMarks();
+protected:
+	void clearTokens() { tokens.clear(); };
+	void resetPosition() { position.it = tokens.begin(); }
+	void addToken(Token token);
+private:
+	bool processElement(TokenList::iterator& it);
+
+	TokenList tokens;
+	TokenizerPosition position;
+
+	struct Replacement
+	{
+		Identifier identifier;
+		std::vector<Token> value;
+	};
+
+	Token invalidToken;
+	std::vector<Replacement> replacements;
+	static std::vector<std::vector<Token>> equValues;
+};
+
+class FileTokenizer: public Tokenizer
+{
+public:
+	bool init(TextFile* input);
+protected:
+	Token loadToken();
+	bool isInputAtEnd();
+
+	void skipWhitespace();
+	void createToken(TokenType type, size_t length);
+	void createToken(TokenType type, size_t length, int64_t value);
+	void createToken(TokenType type, size_t length, double value);
+	void createToken(TokenType type, size_t length, const std::string& value);
+	void createToken(TokenType type, size_t length, const std::string& value, size_t valuePos, size_t valueLength);
+	void createTokenCurrentString(TokenType type, size_t length);
+
+	bool convertInteger(size_t start, size_t end, int64_t& result);
+	bool convertFloat(size_t start, size_t end, double& result);
+	bool parseOperator();
+
+	TextFile* input;
+	std::string currentLine;
+	size_t lineNumber;
+	size_t linePos;
+
+	Token token;
+	bool equActive;
+};
+
+class TokenStreamTokenizer: public Tokenizer
+{
+public:
+	void init(const std::vector<Token>& tokens)
+	{
+		clearTokens();
+
+		for (const Token &tok: tokens)
+			addToken(tok);
+
+		resetPosition();
+	}
+};
+
+// file: Parser/Parser.h
+
+
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+
+class CAssemblerCommand;
+class Expression;
+class TextFile;
+
+struct DirectiveEntry;
+
+using DirectiveMap = std::unordered_multimap<std::string, const DirectiveEntry>;
+
+struct AssemblyTemplateArgument
+{
+	const char* variableName;
+	std::string value;
+};
+
+struct ParserMacro
+{
+	Identifier name;
+	std::vector<Identifier> parameters;
+	std::set<Identifier> labels;
+	std::vector<Token> content;
+	size_t counter;
+};
+
+enum class ConditionalResult { Unknown, True, False };
+
+class Parser
+{
+public:
+	Parser();
+	bool atEnd() { return entries.back().tokenizer->atEnd(); }
+
+	void addEquation(const Token& start, const Identifier& name, const std::string& value);
+
+	Expression parseExpression();
+	bool parseExpressionList(std::vector<Expression>& list, int min = -1, int max = -1);
+	bool parseIdentifier(Identifier& dest);
+	std::unique_ptr<CAssemblerCommand> parseCommand();
+	std::unique_ptr<CAssemblerCommand> parseCommandSequence(char indicator = 0, const std::initializer_list<const char*> terminators = {});
+	std::unique_ptr<CAssemblerCommand> parseFile(TextFile& file, bool virtualFile = false);
+	std::unique_ptr<CAssemblerCommand> parseString(const std::string& text);
+	std::unique_ptr<CAssemblerCommand> parseTemplate(const std::string& text, const std::initializer_list<AssemblyTemplateArgument> variables = {});
+	std::unique_ptr<CAssemblerCommand> parseDirective(const DirectiveMap &directiveSet);
+	bool matchToken(TokenType type, bool optional = false);
+
+	Tokenizer* getTokenizer() { return entries.back().tokenizer; };
+	const Token& peekToken(int ahead = 0) { return getTokenizer()->peekToken(ahead); };
+	const Token& nextToken() { return getTokenizer()->nextToken(); };
+	void eatToken() { getTokenizer()->eatToken(); };
+	void eatTokens(int num) { getTokenizer()->eatTokens(num); };
+
+	void pushConditionalResult(ConditionalResult cond);
+	void popConditionalResult() { conditionStack.pop_back(); };
+	bool isInsideTrueBlock() { return conditionStack.back().inTrueBlock; }
+	bool isInsideUnknownBlock() { return conditionStack.back().inUnknownBlock; }
+
+	void printError(const Token &token, const std::string &text);
+
+	template <typename... Args>
+	void printError(const Token& token, const char* text, const Args&... args)
+	{
+		printError(token, tfm::format(text,args...));
+	}
+
+	bool hasError() { return error; }
+	void updateFileInfo();
+protected:
+	void clearError() { error = false; }
+	std::unique_ptr<CAssemblerCommand> handleError();
+
+	std::unique_ptr<CAssemblerCommand> parse(Tokenizer* tokenizer, bool virtualFile, const fs::path& name = {});
+	std::unique_ptr<CAssemblerCommand> parseLabel();
+	bool checkEquLabel();
+	bool parseFunctionDeclaration(Identifier& name, std::vector<Identifier>& parameters);
+	bool checkExpFuncDefinition();
+	bool checkMacroDefinition();
+
+	std::optional<std::vector<Token>> extractMacroParameter(const Token &macroStart);
+	std::unique_ptr<CAssemblerCommand> parseMacroCall();
+
+	struct FileEntry
+	{
+		Tokenizer* tokenizer;
+		bool virtualFile;
+		int fileNum;
+		int previousCommandLine;
+	};
+
+	std::vector<FileEntry> entries;
+	std::map<Identifier, ParserMacro> macros;
+	std::set<Identifier> macroLabels;
+	bool initializingMacro;
+	bool error;
+	size_t errorLine;
+
+	bool overrideFileInfo;
+	int overrideFileNum;
+	int overrideLineNum;
+
+	struct ConditionInfo
+	{
+		bool inTrueBlock;
+		bool inUnknownBlock;
+	};
+
+	std::vector<ConditionInfo> conditionStack;
+};
+
+struct TokenSequenceValue
+{
+	TokenSequenceValue(const char* text)
+	{
+		type = TokenType::Identifier;
+		textValue = text;
+	}
+
+	TokenSequenceValue(int64_t num)
+	{
+		type = TokenType::Integer;
+		intValue = num;
+	}
+
+	TokenSequenceValue(double num)
+	{
+		type = TokenType::Float;
+		floatValue = num;
+	}
+
+
+	TokenType type;
+	union
+	{
+		const char* textValue;
+		int64_t intValue;
+		double floatValue;
+	};
+};
+
+using TokenSequence = std::initializer_list<TokenType>;
+using TokenValueSequence = std::initializer_list<TokenSequenceValue>;
+
+class TokenSequenceParser
+{
+public:
+	void addEntry(int result, TokenSequence tokens, TokenValueSequence values);
+	bool parse(Parser& parser, int& result);
+	size_t getEntryCount() { return entries.size(); }
+private:
+	struct Entry
+	{
+		std::vector<TokenType> tokens;
+		std::vector<TokenSequenceValue> values;
+		int result;
+	};
+
+	std::vector<Entry> entries;
+};
+
 // file: Archs/Architecture.h
 
+
+#include <map>
+#include <memory>
+
+class ExpressionFunctionHandler;
+class IElfRelocator;
 class Tokenizer;
 class Parser;
 
-class CArchitecture
+class Architecture
 {
 public:
+	static Architecture &current();
+	static void setCurrent(Architecture &arch);
+
 	virtual std::unique_ptr<CAssemblerCommand> parseDirective(Parser& parser) { return nullptr; }
 	virtual std::unique_ptr<CAssemblerCommand> parseOpcode(Parser& parser) { return nullptr; }
-	virtual const ExpressionFunctionMap& getExpressionFunctions() { return emptyMap; }
+	virtual void registerExpressionFunctions(ExpressionFunctionHandler &handler);
 	virtual void NextSection() = 0;
 	virtual void Pass2() = 0;
 	virtual void Revalidate() = 0;
 	virtual std::unique_ptr<IElfRelocator> getElfRelocator() = 0;
 	virtual Endianness getEndianness() = 0;
+	virtual int getWordSize() = 0;
 private:
-	const ExpressionFunctionMap emptyMap = {};
+	static Architecture *currentArchitecture;
 };
 
 class ArchitectureCommand: public CAssemblerCommand
 {
 public:
-	ArchitectureCommand(const std::wstring& tempText, const std::wstring& symText);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
+	ArchitectureCommand(const std::string& tempText, const std::string& symText);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
 private:
+	Architecture *architecture = nullptr;
 	int64_t position;
 	Endianness endianness;
-	std::wstring tempText;
-	std::wstring symText;
+	std::string tempText;
+	std::string symText;
 };
 
-class CInvalidArchitecture: public CArchitecture
+class CInvalidArchitecture: public Architecture
 {
 public:
-	virtual void NextSection();
-	virtual void Pass2();
-	virtual void Revalidate();
-	virtual std::unique_ptr<IElfRelocator> getElfRelocator();
-	virtual Endianness getEndianness() { return Endianness::Little; }
+	void NextSection() override;
+	void Pass2() override;
+	void Revalidate() override;
+	std::unique_ptr<IElfRelocator> getElfRelocator() override;
+	Endianness getEndianness() override { return Endianness::Little; }
+	int getWordSize() override { return 4; };
 };
 
 extern CInvalidArchitecture InvalidArchitecture;
 
+// file: Archs/ARM/ArmOpcodes.h
+
+#include <cstdint>
+
+// opcode types
+#define ARM_TYPE3 0
+#define ARM_TYPE4 1
+#define ARM_TYPE5 2
+#define ARM_TYPE6 3
+#define ARM_TYPE7 4
+#define ARM_TYPE8 5
+#define ARM_TYPE9 6
+#define ARM_TYPE10 7
+#define ARM_TYPE11 8
+#define ARM_TYPE12 9
+#define ARM_TYPE13 10
+#define ARM_TYPE14 11
+#define ARM_TYPE15 12
+#define ARM_TYPE16 13
+#define ARM_TYPE17 14
+#define ARM_MISC 15
+
+// opcode flags
+#define ARM_ARM9			0x00000001
+#define ARM_S				0x00000002
+#define ARM_D				0x00000004
+#define ARM_N				0x00000008
+#define ARM_M				0x00000010
+#define ARM_IMMEDIATE		0x00000020
+#define ARM_WORD			0x00000040
+#define ARM_HALFWORD		0x00000080
+#define ARM_EXCHANGE		0x00000100
+#define ARM_UNCOND			0x00000200
+#define ARM_REGISTER		0x00000400
+#define ARM_LOAD			0x00000800
+#define ARM_STORE			0x00001000
+#define ARM_X				0x00002000
+#define ARM_Y				0x00004000
+#define ARM_SHIFT			0x00008000
+#define ARM_POOL			0x00010000
+#define ARM_ABS				0x00020000	// absolute immediate value for range check
+#define ARM_BRANCH			0x00040000
+#define ARM_ABSIMM			0x00080000	// ldr r0,[200h]
+#define ARM_MRS				0x00100000	// differentiate between msr und mrs
+#define ARM_SWI				0x00200000	// software interrupt
+#define ARM_COPOP			0x00400000	// cp opcode number
+#define ARM_COPINF			0x00800000	// cp information number
+#define ARM_DN				0x01000000	// rn = rd
+#define ARM_DM				0x02000000	// rm = rd
+#define ARM_SIGN			0x04000000	// sign
+#define ARM_RDEVEN			0x08000000	// rd has to be even
+#define ARM_OPTIMIZE		0x10000000	// optimization
+#define ARM_OPMOVMVN		0x20000000	// ... of mov/mvn
+#define ARM_OPANDBIC		0x40000000	// ... of and/bic
+#define ARM_OPCMPCMN		0x80000000	// ... of cmp/cmn
+#define ARM_PCR			   0x100000000	// pc relative
+#define ARM_OPADDSUB	   0x200000000	// ... of add/sub
+
+struct tArmOpcode
+{
+	const char* name;
+	const char* mask;
+	unsigned int encoding;
+	unsigned int type:4;
+	int64_t flags;
+};
+
+#define ARM_AMODE_IB 0
+#define ARM_AMODE_IA 1
+#define ARM_AMODE_DB 2
+#define ARM_AMODE_DA 3
+#define ARM_AMODE_ED 4
+#define ARM_AMODE_FD 5
+#define ARM_AMODE_EA 6
+#define ARM_AMODE_FA 7
+
+typedef struct {
+	unsigned char p:1;
+	unsigned char u:1;
+} tArmAddressingMode;
+
+extern const tArmOpcode ArmOpcodes[];
+extern const unsigned char LdmModes[8];
+extern const unsigned char StmModes[8];
+
+// file: Archs/ARM/ThumbOpcodes.h
+
+#define THUMB_TYPE1		0x00
+#define THUMB_TYPE2		0x01
+#define THUMB_TYPE3		0x02
+#define THUMB_TYPE4		0x03
+#define THUMB_TYPE5		0x04
+#define THUMB_TYPE6		0x05
+#define THUMB_TYPE7		0x06
+#define THUMB_TYPE8		0x07
+#define THUMB_TYPE9		0x08
+#define THUMB_TYPE10	0x09
+#define THUMB_TYPE11	0x0A
+#define THUMB_TYPE12	0x0B
+#define THUMB_TYPE13	0x0C
+#define THUMB_TYPE14	0x0D
+#define THUMB_TYPE15	0x0E
+#define THUMB_TYPE16	0x0F
+#define THUMB_TYPE17	0x10
+#define THUMB_TYPE18	0x11
+#define THUMB_TYPE19	0x12
+
+#define THUMB_ARM9					0x00000001
+#define THUMB_IMMEDIATE				0x00000002
+#define THUMB_REGISTER				0x00000004
+#define THUMB_D						0x00000008
+#define THUMB_S						0x00000010
+#define THUMB_POOL					0x00000020
+#define THUMB_O						0x00000040
+#define THUMB_WORD					0x00000080
+#define THUMB_HALFWORD				0x00000100
+#define THUMB_RLIST					0x00000200
+#define THUMB_EXCHANGE				0x00000400
+#define THUMB_BRANCH				0x00000800
+#define THUMB_LONG					0x00001000
+#define THUMB_PCR					0x00002000
+#define THUMB_DS					0x00004000	// rs = rd
+#define THUMB_PCADD					0x00008000
+#define THUMB_ADDSUB_IMMEDIATE		0x00010000
+#define THUMB_RIGHTSHIFT_IMMEDIATE	0x00020000
+
+struct tThumbOpcode
+{
+	const char* name;
+	const char* mask;
+	unsigned short encoding;
+	unsigned char type:5;
+	unsigned char length:3;
+	int flags;
+};
+
+extern const tThumbOpcode ThumbOpcodes[];
+
+// file: Archs/ARM/Pool.h
+
+
+#include <cstdint>
+#include <vector>
+
+class ArmStateCommand: public CAssemblerCommand
+{
+public:
+	ArmStateCommand(bool state);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override { };
+	void writeTempData(TempData& tempData) const override { };
+	void writeSymData(SymbolData& symData) const override;
+private:
+	int64_t RamPos;
+	bool armstate;
+};
+
+class ArmOpcodeCommand;
+
+struct ArmPoolEntry
+{
+	ArmOpcodeCommand* command;
+	int32_t value;
+};
+
+class ArmPoolCommand: public CAssemblerCommand
+{
+public:
+	ArmPoolCommand();
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
+private:
+	int64_t position;
+	std::vector<int32_t> values;
+};
+
+// file: Archs/ARM/Arm.h
+
+
+#define ARM_SHIFT_LSL		0x00
+#define ARM_SHIFT_LSR		0x01
+#define ARM_SHIFT_ASR		0x02
+#define ARM_SHIFT_ROR		0x03
+#define ARM_SHIFT_RRX		0x04
+
+enum ArmArchType { AARCH_GBA = 0, AARCH_NDS, AARCH_3DS, AARCH_LITTLE, AARCH_BIG, AARCH_INVALID };
+
+typedef struct {
+	const char* name;
+	short num;
+	short len;
+} tArmRegister;
+
+typedef struct {
+	char Name[4];
+	int Number;
+} tArmRegisterInfo;
+
+struct ArmRegisterValue
+{
+	Identifier name{};
+	int num;
+};
+
+extern const tArmRegister ArmRegister[];
+
+class CArmArchitecture: public Architecture
+{
+public:
+	CArmArchitecture();
+	~CArmArchitecture();
+	void clear();
+
+	virtual std::unique_ptr<CAssemblerCommand> parseDirective(Parser& parser);
+	virtual std::unique_ptr<CAssemblerCommand> parseOpcode(Parser& parser);
+	virtual void registerExpressionFunctions(ExpressionFunctionHandler &handler);
+	virtual void NextSection();
+	virtual void Pass2();
+	virtual void Revalidate();
+	virtual std::unique_ptr<IElfRelocator> getElfRelocator();
+	virtual Endianness getEndianness() { return version == AARCH_BIG ? Endianness::Big : Endianness::Little; };
+	virtual int getWordSize() { return 4; };
+	void SetThumbMode(bool b) { thumb = b; };
+	bool GetThumbMode() { return thumb; };
+	void setVersion(ArmArchType type) { version = type; }
+	ArmArchType getVersion() { return version; }
+
+	std::vector<ArmPoolEntry> getPoolContent() { return currentPoolContent; }
+	void clearPoolContent() { currentPoolContent.clear(); }
+	void addPoolValue(ArmOpcodeCommand* command, int32_t value);
+private:
+	bool thumb;
+	ArmArchType version;
+
+	std::vector<ArmPoolEntry> currentPoolContent;
+};
+
+class ArmOpcodeCommand: public CAssemblerCommand
+{
+public:
+	virtual void setPoolAddress(int64_t address) = 0;
+};
+
+extern CArmArchitecture Arm;
+
+// file: Archs/ARM/CArmInstruction.h
+
+
+struct ArmOpcodeVariables {
+	struct {
+		unsigned char c,a;
+		bool s,x,y;
+		unsigned int NewEncoding;
+		char NewType;
+		bool UseNewEncoding;
+		bool UseNewType;
+	} Opcode;
+
+	struct {
+		unsigned char Type;
+		bool ShiftByRegister;
+		bool UseShift;
+		ArmRegisterValue reg;
+		Expression ShiftExpression;
+		int ShiftAmount;
+		unsigned char FinalType;
+		int FinalShiftAmount;
+		bool UseFinal;
+	} Shift;
+
+	struct {
+		bool spsr;
+		int field;
+	} PsrData;
+
+	struct {
+		ArmRegisterValue cd;	// cop register d
+		ArmRegisterValue cn;	// cop register n
+		ArmRegisterValue cm;	// cop register m
+		ArmRegisterValue pn;	// cop number
+		Expression CpopExpression;	// cp opc number
+		Expression CpinfExpression;	// cp information
+		int Cpop;
+		int Cpinf;
+	} CopData;
+
+	ArmRegisterValue rs;
+	ArmRegisterValue rm;
+	ArmRegisterValue rd;
+	ArmRegisterValue rn;
+	bool psr;
+	bool writeback;
+	bool SignPlus;
+	bool negative;
+	Expression ImmediateExpression;
+	int Immediate;
+	int ImmediateBitLen;
+	int OriginalImmediate;
+	int rlist;
+	char RlistStr[64];
+};
+
+class CArmInstruction: public ArmOpcodeCommand
+{
+public:
+	CArmInstruction(const tArmOpcode& sourceOpcode, ArmOpcodeVariables& vars);
+//	~CArmInstruction();
+	bool Load(char* Name, char* Params);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void setPoolAddress(int64_t address) override;
+private:
+	void FormatOpcode(char* Dest, const char* Source) const;
+	void FormatInstruction(const char* encoding, char* dest) const;
+	int getShiftedImmediate(unsigned int num, int& ShiftAmount);
+
+	ArmOpcodeVariables Vars;
+	tArmOpcode Opcode;
+	int64_t RamPos;
+	ArmArchType arch;
+};
+
+// file: Archs/ARM/CThumbInstruction.h
+
+
+struct ThumbOpcodeVariables {
+	ArmRegisterValue rd;
+	ArmRegisterValue rs;
+	ArmRegisterValue rn;
+	ArmRegisterValue ro;
+	Expression ImmediateExpression;
+	int Immediate;
+	int ImmediateBitLen;
+	int OriginalImmediate;
+	int rlist;
+	unsigned int NewEncoding;
+	bool UseNewEncoding;
+	char RlistStr[32];
+} ;
+
+class CThumbInstruction: public ArmOpcodeCommand
+{
+public:
+	CThumbInstruction(const tThumbOpcode& sourceOpcode, ThumbOpcodeVariables& vars);
+//	~CThumbInstruction();
+	bool Load(char* Name, char* Params);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	size_t GetSize() { return OpcodeSize; };
+	void setPoolAddress(int64_t address) override;
+private:
+	void FormatInstruction(const char* encoding, char* dest) const;
+	void WriteInstruction(unsigned short encoding) const;
+	ThumbOpcodeVariables Vars;
+	tThumbOpcode Opcode;
+	size_t OpcodeSize;
+	int64_t RamPos;
+};
+
+// file: Archs/ARM/ArmElfRelocator.h
+
+
+enum {
+	R_ARM_ABS32 = 2,
+	R_ARM_THM_CALL = 10,
+	R_ARM_CALL = 28,
+	R_ARM_JUMP24 = 29,
+	R_ARM_TARGET1 = 38,
+	R_ARM_V4BX = 40,
+};
+
+
+class ArmElfRelocator: public IElfRelocator
+{
+public:
+	ArmElfRelocator(bool arm9): arm9(arm9) { }
+	int expectedMachine() const override;
+	bool isDummyRelocationType(int type) const override;
+
+	bool relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors) override;
+	void setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType) override;
+
+	std::unique_ptr<CAssemblerCommand> generateCtorStub(std::vector<ElfRelocatorCtor>& ctors) override;
+private:
+	bool arm9;
+};
+
+// file: Archs/ARM/ArmExpressionFunctions.h
+
+class ExpressionFunctionHandler;
+
+void registerArmExpressionFunctions(ExpressionFunctionHandler &handler);
+
+// file: Archs/ARM/ArmParser.h
+
+#include <memory>
+#include <string>
+
+class CAssemblerCommand;
+class CArmInstruction;
+class CThumbInstruction;
+class Expression;
+class Parser;
+
+struct ArmRegisterValue;
+struct ArmOpcodeVariables;
+struct ThumbOpcodeVariables;
+struct tArmOpcode;
+struct tThumbOpcode;
+
+struct ArmRegisterDescriptor {
+	const char* name;
+	int num;
+};
+
+class ArmParser
+{
+public:
+	std::unique_ptr<CAssemblerCommand> parseDirective(Parser& parser);
+	std::unique_ptr<CArmInstruction> parseArmOpcode(Parser& parser);
+	std::unique_ptr<CThumbInstruction> parseThumbOpcode(Parser& parser);
+private:
+	bool parseRegisterTable(Parser& parser, ArmRegisterValue& dest, const ArmRegisterDescriptor* table, size_t count);
+	bool parseRegister(Parser& parser, ArmRegisterValue& dest, int max = 15);
+	bool parseCopRegister(Parser& parser, ArmRegisterValue& dest);
+	bool parseCopNumber(Parser& parser, ArmRegisterValue& dest);
+	bool parseRegisterList(Parser& parser, int& dest, int validMask);
+	bool parseImmediate(Parser& parser, Expression& dest);
+	bool parseShift(Parser& parser, ArmOpcodeVariables& vars, bool immediateOnly);
+	bool parsePseudoShift(Parser& parser, ArmOpcodeVariables& vars, int type);
+	void parseWriteback(Parser& parser, bool& dest);
+	void parsePsr(Parser& parser, bool& dest);
+	void parseSign(Parser& parser, bool& dest);
+	bool parsePsrTransfer(Parser& parser, ArmOpcodeVariables& vars, bool shortVersion);
+
+	bool matchSymbol(Parser& parser, char symbol, bool optional);
+
+	int decodeCondition(const std::string& text, size_t& pos);
+	bool decodeAddressingMode(const std::string& text, size_t& pos, unsigned char& dest);
+	bool decodeXY(const std::string& text, size_t& pos, bool& dest);
+	void decodeS(const std::string& text, size_t& pos, bool& dest);
+	bool decodeArmOpcode(const std::string& name, const tArmOpcode& opcode, ArmOpcodeVariables& vars);
+
+	bool parseArmParameters(Parser& parser, const tArmOpcode& opcode, ArmOpcodeVariables& vars);
+	bool parseThumbParameters(Parser& parser, const tThumbOpcode& opcode, ThumbOpcodeVariables& vars);
+};
+
+// file: Archs/ARM/Arm.cpp
+
+
+CArmArchitecture Arm;
+
+CArmArchitecture::CArmArchitecture()
+{
+	clear();
+}
+
+CArmArchitecture::~CArmArchitecture()
+{
+	clear();
+}
+
+std::unique_ptr<CAssemblerCommand> CArmArchitecture::parseDirective(Parser& parser)
+{
+	ArmParser armParser;
+
+	return armParser.parseDirective(parser);
+}
+
+std::unique_ptr<CAssemblerCommand> CArmArchitecture::parseOpcode(Parser& parser)
+{
+	ArmParser armParser;
+
+	if (thumb)
+		return armParser.parseThumbOpcode(parser);
+	else
+		return armParser.parseArmOpcode(parser);
+}
+
+void CArmArchitecture::registerExpressionFunctions(ExpressionFunctionHandler &handler)
+{
+	registerArmExpressionFunctions(handler);
+}
+
+void CArmArchitecture::clear()
+{
+	currentPoolContent.clear();
+	thumb = false;
+}
+
+void CArmArchitecture::Pass2()
+{
+	currentPoolContent.clear();
+}
+
+void CArmArchitecture::Revalidate()
+{
+	for (ArmPoolEntry& entry: currentPoolContent)
+	{
+		entry.command->applyFileInfo();
+		Logger::queueError(Logger::Error, "Unable to find literal pool");
+	}
+
+	currentPoolContent.clear();
+}
+
+void CArmArchitecture::NextSection()
+{
+
+}
+
+std::unique_ptr<IElfRelocator> CArmArchitecture::getElfRelocator()
+{
+	return std::make_unique<ArmElfRelocator>(version != AARCH_GBA);
+}
+
+void CArmArchitecture::addPoolValue(ArmOpcodeCommand* command, int32_t value)
+{
+	ArmPoolEntry entry;
+	entry.command = command;
+	entry.value = value;
+
+	currentPoolContent.push_back(entry);
+}
+
+// file: Archs/ARM/ArmOpcodes.cpp
+
+
+
+const unsigned char LdmModes[8] = { 3,1,2,0,3,1,2,0 };
+const unsigned char StmModes[8] = { 3,1,2,0,0,2,1,3 };
+
+/*	Placeholders
+	sX	register
+	dX	register
+	nX	register
+	mX	register
+		X = 0:	all registers
+		X = 1:	all registers except r15
+	i:	shifted 8 bit immediate
+	I:	32 bit immediate
+	jx:	x bit immediate
+	SX:	shift (0 = immediate or register, 1 = immediate only)
+	W:	writeback
+	p:	psr
+	v:	sign for register operands
+	/X:	optional character X
+	R:	rlist
+	D,N,M:	cop registers
+	X:	cop number
+	Y:	cop opcode
+	Z:	cop information
+*/
+
+const tArmOpcode ArmOpcodes[] = {
+	{ "bxC",	"n1",					0x012FFF10, ARM_TYPE3,	ARM_N },
+	{ "blxC",	"n1",					0x012FFF30, ARM_TYPE3,	ARM_ARM9|ARM_N },
+
+	{ "bC",		"/#I",					0x0A000000,	ARM_TYPE4,	ARM_BRANCH|ARM_IMMEDIATE|ARM_WORD },
+	{ "blC",	"/#I",					0x0B000000,	ARM_TYPE4,	ARM_BRANCH|ARM_IMMEDIATE|ARM_WORD },
+	{ "blx",	"/#I",					0xFA000000,	ARM_TYPE4,	ARM_ARM9|ARM_BRANCH|ARM_UNCOND|ARM_IMMEDIATE|ARM_HALFWORD|ARM_EXCHANGE },
+
+	{ "andCS",	"d0,n0,m0S0",			0x00000000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "andCS",	"d0,m0S0",				0x00000000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "andCS",	"d0,n0,/#i",			0x02000000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_OPTIMIZE|ARM_OPANDBIC },
+	{ "andCS",	"d0,/#i",				0x02000000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN|ARM_OPTIMIZE|ARM_OPANDBIC },
+	{ "eorCS",	"d0,n0,m0S0",			0x00200000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "eorCS",	"d0,m0S0",				0x00200000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "xorCS",	"d0,n0,m0S0",			0x00200000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "xorCS",	"d0,m0S0",				0x00200000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "eorCS",	"d0,n0,/#i",			0x02200000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "eorCS",	"d0,/#i",				0x02200000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "xorCS",	"d0,n0,/#i",			0x02200000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "xorCS",	"d0,/#i",				0x02200000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "subCS",	"d0,n0,m0S0",			0x00400000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "subCS",	"d0,m0S0",				0x00400000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "subCS",	"d0,n0,/#i",			0x02400000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_OPTIMIZE|ARM_OPADDSUB },
+	{ "subCS",	"d0,/#i",				0x02400000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN|ARM_OPTIMIZE|ARM_OPADDSUB },
+	{ "rsbCS",	"d0,n0,m0S0",			0x00600000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "rsbCS",	"d0,m0S0",				0x00600000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "rsbCS",	"d0,n0,/#i",			0x02600000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "rsbCS",	"d0,/#i",				0x02600000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "addCS",	"d0,n0,m0S0",			0x00800000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "addCS",	"d0,m0S0",				0x00800000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "addCS",	"d0,n0,/#i",			0x02800000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_OPTIMIZE|ARM_OPADDSUB },
+	{ "addCS",	"d0,/#i",				0x02800000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN|ARM_OPTIMIZE|ARM_OPADDSUB },
+	{ "adcCS",	"d0,n0,m0S0",			0x00A00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "adcCS",	"d0,m0S0",				0x00A00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "adcCS",	"d0,n0,/#i",			0x02A00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "adcCS",	"d0,/#i",				0x02A00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "sbcCS",	"d0,n0,m0S0",			0x00C00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "sbcCS",	"d0,m0S0",				0x00C00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "sbcCS",	"d0,n0,/#i",			0x02C00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "sbcCS",	"d0,/#i",				0x02C00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "rscCS",	"d0,n0,m0S0",			0x00E00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "rscCS",	"d0,m0S0",				0x00E00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "rscCS",	"d0,n0,/#i",			0x02E00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "rscCS",	"d0,/#i",				0x02E00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "tstC",	"n0,m0S0",				0x01100000,	ARM_TYPE5,	ARM_REGISTER|ARM_M|ARM_N },
+	{ "tstC",	"n0,/#i",				0x03100000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_N },
+	{ "teqC",	"n0,m0S0",				0x01300000,	ARM_TYPE5,	ARM_REGISTER|ARM_M|ARM_N },
+	{ "teqC",	"n0,/#i",				0x03300000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_N },
+	{ "cmpC",	"n0,m0S0",				0x01500000,	ARM_TYPE5,	ARM_REGISTER|ARM_M|ARM_N|ARM_OPTIMIZE|ARM_OPCMPCMN },
+	{ "cmpC",	"n0,/#i",				0x03500000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_N|ARM_OPTIMIZE|ARM_OPCMPCMN },
+	{ "cmnC",	"n0,m0S0",				0x01700000,	ARM_TYPE5,	ARM_REGISTER|ARM_M|ARM_N|ARM_OPTIMIZE|ARM_OPCMPCMN },
+	{ "cmnC",	"n0,/#i",				0x03700000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_N|ARM_OPTIMIZE|ARM_OPCMPCMN },
+	{ "orrCS",	"d0,n0,m0S0",			0x01800000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "orrCS",	"d0,m0S0",				0x01800000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "orrCS",	"d0,n0,/#i",			0x03800000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N },
+	{ "orrCS",	"d0,/#i",				0x03800000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN },
+	{ "movCS",	"d0,m0S0",				0x01A00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M },
+	{ "nop",	"",						0xE1A00000,	ARM_TYPE5,	ARM_UNCOND },
+	{ "movCS",	"d0,/#i",				0x03A00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_OPTIMIZE|ARM_OPMOVMVN },
+	{ "bicCS",	"d0,n0,m0S0",			0x01C00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N },
+	{ "bicCS",	"d0,m0S0",				0x01C00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M|ARM_N|ARM_DN },
+	{ "bicCS",	"d0,n0,/#i",			0x03C00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_OPTIMIZE|ARM_OPANDBIC },
+	{ "bicCS",	"d0,/#i",				0x03C00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_N|ARM_DN|ARM_OPTIMIZE|ARM_OPANDBIC },
+	{ "mvnCS",	"d0,m0S0",				0x01E00000,	ARM_TYPE5,	ARM_REGISTER|ARM_D|ARM_M },
+	{ "mvnCS",	"d0,/#i",				0x03E00000,	ARM_TYPE5,	ARM_SHIFT|ARM_D|ARM_IMMEDIATE|ARM_OPTIMIZE|ARM_OPMOVMVN },
+
+	{ "addCS",	"d1,=/#I",				0x028F0000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_D|ARM_PCR },
+	{ "subCS",	"d1,=/#I",				0x028F0000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_D|ARM_PCR },
+	{ "adrCS",	"d1,/#I",				0x028F0000,	ARM_TYPE5,	ARM_SHIFT|ARM_IMMEDIATE|ARM_D|ARM_PCR },
+
+
+	{ "lslCS",	"d0,m0,z\x00",			0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_REGISTER },
+	{ "lslCS",	"d0,z\x00",				0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_DM|ARM_REGISTER },
+	{ "lsrCS",	"d0,m0,z\x01",			0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_REGISTER },
+	{ "lsrCS",	"d0,z\x01",				0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_DM|ARM_REGISTER },
+	{ "asrCS",	"d0,m0,z\x02",			0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_REGISTER },
+	{ "asrCS",	"d0,z\x02",				0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_DM|ARM_REGISTER },
+	{ "rorCS",	"d0,m0,z\x03",			0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_REGISTER },
+	{ "rorCS",	"d0,z\x03",				0x01A00000,	ARM_TYPE5,	ARM_D|ARM_M|ARM_DM|ARM_REGISTER },
+
+	{ "msrC",	"P0,m1",				0x0120F000,	ARM_TYPE6,	ARM_REGISTER|ARM_M },
+	{ "movC",	"P0,m1",				0x0120F000,	ARM_TYPE6,	ARM_REGISTER|ARM_M },		 // msrC alias
+	{ "msrC",	"P0,/#i",				0x0320F000,	ARM_TYPE6,	ARM_IMMEDIATE|ARM_SHIFT },
+	{ "movC",	"P0,/#i",				0x0320F000,	ARM_TYPE6,	ARM_IMMEDIATE|ARM_SHIFT },	 // msrC alias
+	{ "mrsC",	"d1,P1",				0x010F0000,	ARM_TYPE6,	ARM_REGISTER|ARM_D|ARM_MRS },
+	{ "movC",	"d1,P1",				0x010F0000,	ARM_TYPE6,	ARM_REGISTER|ARM_D|ARM_MRS },//mrsC alias
+
+	{ "mulCS",	"d1,m1,s1",				0x00000090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S },
+	{ "mulCS",	"d1,s1",				0x00000090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_DM },
+	{ "mlaCS",	"d1,m1,s1,n1",			0x00200090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N },
+	{ "mlaCS",	"d1,s1,n1",				0x00200090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N|ARM_DM },
+	{ "umullCS","n1,d1,m1,s1",			0x00800090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N },
+	{ "umlalCS","n1,d1,m1,s1",			0x00A00090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N },
+	{ "smullCS","n1,d1,m1,s1",			0x00C00090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N },
+	{ "smlalCS","n1,d1,m1,s1",			0x00E00090,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N },
+	{ "smlaXYC","d1,m1,s1,n1",			0x01000080,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N|ARM_X|ARM_Y|ARM_ARM9 },
+	{ "smlawYC","d1,m1,s1,n1",			0x01200080,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N|ARM_Y|ARM_ARM9 },
+	{ "smulwYC","d1,m1,s1",				0x012000A0,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_Y|ARM_ARM9 },
+	{ "smlalXYC","n1,d1,m1,s1",			0x014000A0,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_N|ARM_X|ARM_Y|ARM_ARM9 },
+	{ "smulXYC","d1,m1,s1",				0x01600080,	ARM_TYPE7,	ARM_D|ARM_M|ARM_S|ARM_X|ARM_Y|ARM_ARM9 },
+
+	{ "strC",	"d0,[n0]",				0x05800000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "strC",	"d0,[n0,vm1S1]W",		0x07800000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_M|ARM_REGISTER|ARM_SIGN },
+	{ "strC",	"d0,[n0],/#j\x0C",		0x04800000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strC",	"d0,[n0],vm1S1",		0x06800000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "strC",	"d0,[n0,/#j\x0C]W",		0x05800000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrC",	"d0,[n0]",				0x05900000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "ldrC",	"d0,[n0,vm1S1]W",		0x07900000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_M|ARM_REGISTER|ARM_SIGN },
+	{ "ldrC",	"d0,[n0,/#j\x0C]W",		0x05900000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrC",	"d0,[n0],vm1S1",		0x06900000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "ldrC",	"d0,[n0],/#j\x0C",		0x04900000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strCb",	"d0,[n0]",				0x05C00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "strCb",	"d0,[n0,vm1S1]W",		0x07C00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_M|ARM_REGISTER|ARM_SIGN },
+	{ "strCb",	"d0,[n0,/#j\x0C]W",		0x05C00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strCb",	"d0,[n0],vm1S1",		0x06C00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "strCb",	"d0,[n0],/#j\x0C",		0x04C00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCb",	"d0,[n0]",				0x05D00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "ldrCb",	"d0,[n0,vm1S1]W",		0x07D00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_M|ARM_REGISTER|ARM_SIGN },
+	{ "ldrCb",	"d0,[n0,/#j\x0C]W",		0x05D00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCb",	"d0,[n0],vm1S1",		0x06D00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "ldrCb",	"d0,[n0],/#j\x0C",		0x04D00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strC",	"d0,[n0]!",				0x05A00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "strCt",	"d0,[n0]",				0x05A00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "strCt",	"d0,[n0],vm1S1",		0x06A00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "strCt",	"d0,[n0],/#j\x0C",		0x04A00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrC",	"d0,[n0]!",				0x05B00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "ldrCt",	"d0,[n0]",				0x05B00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "ldrCt",	"d0,[n0],vm1S1",		0x06B00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "ldrCt",	"d0,[n0],/#j\x0C",		0x04B00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strCb",	"d0,[n0]!",				0x05E00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "strCbt",	"d0,[n0]",				0x05E00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "strCbt",	"d0,[n0],vm1S1",		0x06E00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "strCbt",	"d0,[n0],/#j\x0C",		0x04E00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCb",	"d0,[n0]!",				0x05F00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "ldrCbt",	"d0,[n0]",				0x05F00000,	ARM_TYPE9,	ARM_D|ARM_N },
+	{ "ldrCbt",	"d0,[n0],vm1S1",		0x06F00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "ldrCbt",	"d0,[n0],/#j\x0C",		0x04F00000,	ARM_TYPE9,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrC",	"d0,[/#j\x0C]",			0x059F0000,	ARM_TYPE9,	ARM_D|ARM_LOAD|ARM_ABSIMM|ARM_IMMEDIATE },
+	{ "strC",	"d0,[/#j\x0C]",			0x058F0000,	ARM_TYPE9,	ARM_D|ARM_LOAD|ARM_ABSIMM|ARM_IMMEDIATE },
+	{ "ldrC",	"d0,=/#i",				0x059F0000,	ARM_TYPE9,	ARM_D|ARM_POOL|ARM_IMMEDIATE },
+	{ "pld",	"[n0]",					0xF5D0F000,	ARM_TYPE9,	ARM_ARM9|ARM_UNCOND|ARM_N },
+	{ "pld",	"[n0,vm1S1]",			0xF7D0F000,	ARM_TYPE9,	ARM_ARM9|ARM_UNCOND|ARM_N |ARM_M|ARM_REGISTER|ARM_SIGN },
+	{ "pld",	"[n0,/#j\x0C]",			0xF5D0F000,	ARM_TYPE9,	ARM_ARM9|ARM_UNCOND|ARM_N |ARM_IMMEDIATE|ARM_ABS },
+
+
+	{ "strCh",	"d0,[n0]",				0x01C000B0,	ARM_TYPE10,	ARM_D|ARM_N },
+	{ "strCh",	"d0,[n0,vm1]W",			0x018000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M|ARM_SIGN },
+	{ "strCh",	"d0,[n0,/#j\x08]W",		0x01C000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strCh",	"d0,[n0],vm1",			0x008000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_SIGN },
+	{ "strCh",	"d0,[n0],/#j\x08",		0x00C000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "strCh",	"d0,[/#j\x08]",			0x01CF00B0,	ARM_TYPE10,	ARM_D|ARM_LOAD|ARM_ABSIMM|ARM_IMMEDIATE },
+
+	{ "ldrCh",	"d0,[n0,m1]",			0x019000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M },
+	{ "ldrCh",	"d0,[n0],/#j\x08",		0x00D000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCh",	"d0,[n0]",				0x01D000B0,	ARM_TYPE10,	ARM_D|ARM_N },
+	{ "ldrCh",	"d0,[n0,/#j\x08]",		0x01D000B0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCsb",	"d0,[n0,m1]",			0x019000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M },
+	{ "ldrCsb",	"d0,[n0],/#j\x08",		0x00D000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCsb",	"d0,[n0]",				0x01D000D0,	ARM_TYPE10,	ARM_D|ARM_N },
+	{ "ldrCsb",	"d0,[n0,/#j\x08]",		0x01D000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldCsb",	"d0,[n0,m1]",			0x019000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M },
+	{ "ldCsb",	"d0,[n0]",				0x01D000D0,	ARM_TYPE10,	ARM_D|ARM_N },
+	{ "ldCsb",	"d0,[n0,/#j\x08]",		0x01D000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldrCsh",	"d0,[n0,m1]",			0x019000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M },
+	{ "ldrCsh",	"d0,[n0]",				0x01D000F0,	ARM_TYPE10,	ARM_D|ARM_N },
+	{ "ldrCsh",	"d0,[n0,/#j\x08]",		0x01D000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+	{ "ldCsh",	"d0,[n0,m1]",			0x019000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M },
+	{ "ldCsh",	"d0,[n0]",				0x01D000F0,	ARM_TYPE10,	ARM_D|ARM_N },
+	{ "ldCsh",	"d0,[n0,/#j\x08]",		0x01D000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ABS },
+
+	{ "ldrCd",	"d0,[n0,m1]",			0x018000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M|ARM_ARM9 },
+	{ "ldrCd",	"d0,[n0]",				0x01C000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_ARM9 },
+	{ "ldrCd",	"d0,[n0,/#j\x08]",		0x01C000D0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ARM9 },
+	{ "strCd",	"d0,[n0,m1]",			0x018000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_REGISTER|ARM_M|ARM_ARM9 },
+	{ "strCd",	"d0,[n0]",				0x01C000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_ARM9 },
+	{ "strCd",	"d0,[n0,/#j\x08]",		0x01C000F0,	ARM_TYPE10,	ARM_D|ARM_N|ARM_IMMEDIATE|ARM_ARM9 },
+
+	{ "stmCA",	"/[n1/]W,/{R/}p",		0x08000000,	ARM_TYPE11,	ARM_STORE|ARM_N },
+	{ "ldmCA",	"/[n1/]W,/{R/}p",		0x08100000,	ARM_TYPE11,	ARM_LOAD|ARM_N },
+	{ "pushC",	"/{R/}",				0x092D0000,	ARM_TYPE11,	0 },
+	{ "popC",	"/{R/}",				0x08BD0000,	ARM_TYPE11,	0 },
+
+	{ "swpC",	"d1,m1,[n1]",			0x01000090,	ARM_TYPE12,	ARM_D|ARM_N|ARM_M },
+	{ "swpC",	"d1,[n1]",				0x01000090,	ARM_TYPE12,	ARM_D|ARM_N|ARM_M|ARM_DM },
+	{ "swpCb",	"d1,m1,[n1]",			0x01400090,	ARM_TYPE12,	ARM_D|ARM_N|ARM_M },
+	{ "swpCb",	"d1,[n1]",				0x01400090,	ARM_TYPE12,	ARM_D|ARM_N|ARM_M|ARM_DM },
+
+	{ "swiC",	"/#j\x18",				0x0F000000,	ARM_TYPE13,	ARM_SWI|ARM_IMMEDIATE },
+	{ "bkpt",	"/#j\x10",				0xE1200070,	ARM_TYPE13,	ARM_UNCOND|ARM_IMMEDIATE },
+
+	{ "cdpC",	"X,Y,D,N,M",			0x0E000000,	ARM_TYPE14,	ARM_COPOP },
+	{ "cdpC",	"X,Y,D,N,M,Z",			0x0E000000,	ARM_TYPE14,	ARM_COPOP|ARM_COPINF },
+	{ "cdp2",	"X,Y,D,N,M",			0xFE000000,	ARM_TYPE14,	ARM_ARM9|ARM_UNCOND|ARM_COPOP },
+	{ "cdp2",	"X,Y,D,N,M,Z",			0xFE000000,	ARM_TYPE14,	ARM_ARM9|ARM_UNCOND|ARM_COPOP|ARM_COPINF },
+
+	{ "mcrC",	"X,Y,d1,N,M",			0x0E000010,	ARM_TYPE16,	ARM_COPOP },
+	{ "mcrC",	"X,Y,d1,N,M,Z",			0x0E000010,	ARM_TYPE16,	ARM_COPOP|ARM_COPINF },
+	{ "movC",	"X,Y,N,M,Z,d1",			0x0E000010,	ARM_TYPE16,	ARM_COPOP|ARM_COPINF },	// alias
+	{ "mcr2",	"X,Y,d1,N,M",			0xFE000010,	ARM_TYPE16,	ARM_ARM9|ARM_COPOP },
+	{ "mcr2",	"X,Y,d1,N,M,Z",			0xFE000010,	ARM_TYPE16,	ARM_ARM9|ARM_COPOP|ARM_COPINF },
+	{ "mrcC",	"X,Y,d1,N,M",			0x0E100010,	ARM_TYPE16,	ARM_COPOP },
+	{ "mrcC",	"X,Y,d1,N,M,Z",			0x0E100010,	ARM_TYPE16,	ARM_COPOP|ARM_COPINF },
+	{ "movC",	"d1,X,Y,N,M,Z",			0x0E100010,	ARM_TYPE16,	ARM_COPOP|ARM_COPINF },	// alias
+	{ "mrc2",	"X,Y,d1,N,M",			0xFE100010,	ARM_TYPE16,	ARM_ARM9|ARM_COPOP },
+	{ "mrc2",	"X,Y,d1,N,M,Z",			0xFE100010,	ARM_TYPE16,	ARM_ARM9|ARM_COPOP|ARM_COPINF },
+
+	{ "mcrrC",	"X,Y,d1,n1,M",			0x0C400000,	ARM_TYPE17,	ARM_COPOP },
+	{ "mrrcC",	"X,Y,d1,n1,M",			0x0C500000,	ARM_TYPE17,	ARM_COPOP },
+
+	{ "clzC",	"d1,m1",				0x016F0F10,	ARM_MISC,	ARM_D|ARM_M|ARM_ARM9 },
+	{ "qaddC",	"d1,m1,n1",				0x01000050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9 },
+	{ "qaddC",	"d1,n1",				0x01000050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9|ARM_DM },
+	{ "qsubC",	"d1,m1,n1",				0x01200050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9 },
+	{ "qsubC",	"d1,n1",				0x01200050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9|ARM_DM },
+	{ "qdaddC",	"d1,m1,n1",				0x01400050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9 },
+	{ "qdaddC",	"d1,n1",				0x01400050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9|ARM_DM },
+	{ "qdsubC",	"d1,m1,n1",				0x01600050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9 },
+	{ "qdsubC",	"d1,n1",				0x01600050,	ARM_MISC,	ARM_D|ARM_N|ARM_M|ARM_ARM9|ARM_DM },
+
+	{ nullptr,	nullptr,				0,			0,			0 }
+};
+
+// file: Archs/ARM/CArmInstruction.cpp
+
+
+#include <cstddef>
+
+const char ArmConditions[16][3] = {
+	"eq","ne","cs","cc","mi","pl","vs","vc","hi","ls","ge","lt","gt","le","","nv"
+};
+const char ArmAddressingModes[4][3] = { "da","ia","db","ib"};
+
+/*
+const char ArmShiftModes[4][4] = { "lsl", "lsr", "asr", "ror" };
+
+const char ArmPsrModes[16][5] = {
+	"_???",	"_ctl",	"_x",	"_xc",	"_s",	"_sc",	"_sx",	"_sxc",
+	"_flg",	"_fc",	"_fx",	"_fxc",	"_fs",	"_fsc",	"_fsx",	""
+};
+*/
+
+bool CArmInstruction::Load(char *Name, char *Params)
+{
+	return false;
+}
+
+CArmInstruction::CArmInstruction(const tArmOpcode& sourceOpcode, ArmOpcodeVariables& vars)
+{
+	this->Opcode = sourceOpcode;
+	this->Vars = vars;
+	arch = Arm.getVersion();
+}
+
+int CArmInstruction::getShiftedImmediate(unsigned int num, int& ShiftAmount)
+{
+	for (int i = 0; i < 32; i+=2)
+	{
+		unsigned int andval = (0xFFFFFF00 >> i) | (0xFFFFFF00 << (-i & 31));
+
+		if ((num & andval) == 0)	// found it
+		{
+			ShiftAmount = i;
+			return (num << i) | (num >> (-i & 31));
+		}
+	}
+	return -1;
+}
+
+void CArmInstruction::setPoolAddress(int64_t address)
+{
+	int pos = (int) (address-((RamPos+8) & 0xFFFFFFFD));
+	if (abs(pos) > 4095)
+	{
+		Logger::queueError(Logger::Error, "Literal pool out of range");
+		return;
+	}
+
+	Vars.Immediate = pos;
+}
+
+bool CArmInstruction::Validate(const ValidateState &state)
+{
+	RamPos = g_fileManager->getVirtualAddress();
+
+	Vars.Opcode.UseNewEncoding = false;
+	Vars.Opcode.UseNewType = false;
+
+
+	if (RamPos & 3)
+	{
+		Logger::queueError(Logger::Warning, "Opcode not word aligned");
+	}
+
+	if (Vars.Shift.UseShift && !Vars.Shift.ShiftByRegister)
+	{
+		if (!Vars.Shift.ShiftExpression.evaluateInteger(Vars.Shift.ShiftAmount))
+		{
+			Logger::queueError(Logger::Error, "Invalid expression");
+			return false;
+		}
+
+		int mode = Vars.Shift.Type;
+		int num = Vars.Shift.ShiftAmount;
+
+		if (num == 0 && mode == ARM_SHIFT_LSR) mode = ARM_SHIFT_LSL;
+		else if (num == 0 && mode == ARM_SHIFT_ASR) mode = ARM_SHIFT_LSL;
+		else if (num == 0 && mode == ARM_SHIFT_ROR) mode = ARM_SHIFT_LSL;
+		else if (num == 32 && mode == ARM_SHIFT_LSR) num = 0;
+		else if (num == 32 && mode == ARM_SHIFT_ASR) num = 0;
+		else if (num == 32 && mode == ARM_SHIFT_LSL)
+		{
+			Logger::queueError(Logger::Error, "Shift amount 0x%02X out of range",num);
+			return false;
+		} else if (mode == ARM_SHIFT_RRX)
+		{
+			if (num != 1)
+			{
+				Logger::queueError(Logger::Error, "Invalid shift mode");
+				return false;
+			}
+			mode = ARM_SHIFT_ROR;
+			num = 0;
+		}
+
+		if (num > 32 || num < 0)
+		{
+			Logger::queueError(Logger::Error, "Shift amount 0x%02X out of range",num);
+			return false;
+		}
+
+		Vars.Shift.FinalType = mode;
+		Vars.Shift.FinalShiftAmount = num;
+		Vars.Shift.UseFinal = true;
+	}
+
+	if (Opcode.flags & ARM_COPOP)
+	{
+		if (!Vars.CopData.CpopExpression.evaluateInteger(Vars.CopData.Cpop))
+		{
+			Logger::queueError(Logger::Error, "Invalid expression");
+			return false;
+		}
+
+		if (Vars.CopData.Cpop > 15)
+		{
+			Logger::queueError(Logger::Error, "CP Opc number %02X too big",Vars.CopData.Cpop);
+			return false;
+		}
+	}
+
+	if (Opcode.flags & ARM_COPINF)
+	{
+		if (!Vars.CopData.CpinfExpression.evaluateInteger(Vars.CopData.Cpinf))
+		{
+			Logger::queueError(Logger::Error, "Invalid expression");
+			return false;
+		}
+
+		if (Vars.CopData.Cpinf > 7)
+		{
+			Logger::queueError(Logger::Error, "CP Inf number %02X too big",Vars.CopData.Cpinf);
+			return false;
+		}
+	}
+
+	if (Opcode.flags & ARM_DN)
+	{
+		Vars.rn = Vars.rd;
+	}
+
+	if (Opcode.flags & ARM_DM)
+	{
+		Vars.rm = Vars.rd;
+	}
+
+	if (Opcode.flags & ARM_RDEVEN)
+	{
+		if (Vars.rd.num & 1)
+		{
+			Logger::queueError(Logger::Error, "rd must be even");
+			return false;
+		}
+	}
+
+	bool memoryAdvanced = false;
+	if (Opcode.flags & ARM_IMMEDIATE)
+	{
+		ExpressionValue value = Vars.ImmediateExpression.evaluate();
+
+		switch (value.type)
+		{
+		case ExpressionValueType::Integer:
+			Vars.Immediate = (int) value.intValue;
+			break;
+		case ExpressionValueType::Float:
+			if (!(Opcode.flags & ARM_SHIFT) && !(Opcode.flags & ARM_POOL))
+			{
+				Logger::queueError(Logger::Error, "Invalid expression type");
+				return false;
+			}
+
+			Vars.Immediate = (int) getFloatBits((float)value.floatValue);
+			break;
+		default:
+			Logger::queueError(Logger::Error, "Invalid expression type");
+			return false;
+		}
+
+		Vars.OriginalImmediate = Vars.Immediate;
+		Vars.negative = false;
+
+		g_fileManager->advanceMemory(4);
+		memoryAdvanced = true;
+
+		if (Opcode.flags & ARM_SHIFT)	// shifted immediate, eg 4000h
+		{
+			int temp;
+			Vars.negative = false;
+			if ((Opcode.flags & ARM_ABS) && Vars.Immediate < 0)
+			{
+				Vars.Immediate = abs(Vars.Immediate);
+				Vars.negative = true;
+			}
+
+			if (Opcode.flags & ARM_PCR)
+			{
+				Vars.Immediate = Vars.Immediate - ((RamPos+8) & ~3);
+				if (Vars.Immediate < 0)
+				{
+					Vars.Opcode.NewEncoding = Opcode.encoding ^ 0xC00000;
+					Vars.Opcode.UseNewEncoding = true;
+					Vars.Immediate = abs(Vars.Immediate);
+				}
+			}
+
+			if ((temp = getShiftedImmediate(Vars.Immediate,Vars.Shift.ShiftAmount)) == -1)
+			{
+				// mov/mvn -> mvn/mov
+				if ((Opcode.flags & ARM_OPTIMIZE))
+				{
+					auto encoding = Opcode.encoding;
+					auto immediate = Vars.Immediate;
+
+					if (Opcode.flags & ARM_OPMOVMVN)
+					{
+						encoding ^= 0x0400000;
+						immediate = ~immediate;
+					}
+					else if (Opcode.flags & ARM_OPANDBIC)
+					{
+						encoding ^= 0x1C00000;
+						immediate = ~immediate;
+					}
+					else if (Opcode.flags & ARM_OPCMPCMN)
+					{
+						encoding ^= 0x0200000;
+						immediate = 0-immediate;
+					}
+					else if (Opcode.flags & ARM_OPADDSUB)
+					{
+						encoding ^= 0x0C00000;
+						immediate = 0-immediate;
+					}
+
+					temp = getShiftedImmediate(immediate, Vars.Shift.ShiftAmount);
+					if (temp != -1)
+					{
+						Vars.Opcode.NewEncoding = encoding;
+						Vars.Opcode.UseNewEncoding = true;
+					}
+				}
+				if (temp == -1)
+				{
+					// If we get here then the instruction did not contain a shifted immediate
+					// and we failed to optimize into another instruction
+					Logger::queueError(Logger::Error, "Invalid shifted immediate 0x%X", Vars.OriginalImmediate);
+					return false;
+				}
+			}
+			Vars.Immediate = temp;
+		} else if (Opcode.flags & ARM_POOL)
+		{
+			int temp;
+
+			if ((temp = getShiftedImmediate(Vars.Immediate,Vars.Shift.ShiftAmount)) != -1)
+			{
+				// interpete ldr= as mov
+				Vars.Opcode.NewEncoding = 0x03A00000;
+				Vars.Opcode.UseNewEncoding = true;
+				Vars.Opcode.NewType = ARM_TYPE5;
+				Vars.Opcode.UseNewType = true;
+				Vars.Immediate = temp;
+			} else if ((temp = getShiftedImmediate(~Vars.Immediate,Vars.Shift.ShiftAmount)) != -1)
+			{
+				// interprete ldr= as mvn
+				Vars.Opcode.NewEncoding = 0x03E00000;
+				Vars.Opcode.UseNewEncoding = true;
+				Vars.Opcode.NewType = ARM_TYPE5;
+				Vars.Opcode.UseNewType = true;
+				Vars.Immediate = temp;
+			} else {
+				Arm.addPoolValue(this,Vars.Immediate);
+			}
+		} else if (Opcode.flags & ARM_BRANCH)
+		{
+			if (Opcode.flags & ARM_HALFWORD)
+			{
+				if (Vars.Immediate & 1)
+				{
+					Logger::queueError(Logger::Error, "Branch target must be halfword aligned");
+					return false;
+				}
+			} else {
+				if (Vars.Immediate & 3)
+				{
+					Logger::queueError(Logger::Error, "Branch target must be word aligned");
+					return false;
+				}
+			}
+
+			Vars.Immediate = (int) (Vars.Immediate-RamPos-8);
+			if (abs(Vars.Immediate) >= 0x2000000)
+			{
+				Logger::queueError(Logger::Error, "Branch target %08X out of range",Vars.OriginalImmediate);
+				return false;
+			}
+		} else if (Opcode.flags & ARM_ABSIMM)	// ldr r0,[I]
+		{
+			Vars.Immediate = (int) (Vars.Immediate-RamPos-8);
+			if (abs(Vars.Immediate) >= (1 << Vars.ImmediateBitLen))
+			{
+				Logger::queueError(Logger::Error, "Load target %08X out of range",Vars.OriginalImmediate);
+				return false;
+			}
+		} else if (Opcode.flags & ARM_SWI)	// it's an interrupt, may need to shift it
+		{
+			bool needsShift = arch == AARCH_GBA || arch == AARCH_NDS;
+			if (needsShift && Vars.Immediate < 0xFF)
+			{
+				Vars.Immediate <<= 16;
+				Vars.OriginalImmediate = Vars.Immediate;
+			}
+		} else if ((Opcode.flags & ARM_ABS) && Vars.Immediate < 0)
+		{
+			Vars.Immediate = abs(Vars.Immediate);
+			Vars.negative = true;
+		}
+
+		if (Vars.ImmediateBitLen != 32 && !(Opcode.flags & ARM_ABSIMM))
+		{
+			unsigned int check = Opcode.flags & ARM_ABS ? abs(Vars.Immediate) : Vars.Immediate;
+			if (check >= (unsigned int)(1 << Vars.ImmediateBitLen))
+			{
+				Logger::queueError(Logger::Error, "Immediate value %X out of range",Vars.OriginalImmediate);
+				return false;
+			}
+		}
+	}
+
+	if (!memoryAdvanced)
+		g_fileManager->advanceMemory(4);
+
+	return false;
+}
+
+void CArmInstruction::FormatOpcode(char* Dest, const char* Source) const
+{
+	while (*Source != 0)
+	{
+		switch (*Source)
+		{
+		case 'C':	// condition
+			Dest += sprintf(Dest,"%s",ArmConditions[Vars.Opcode.c]);
+			Source++;
+			break;
+		case 'S':	// set flag
+			if (Vars.Opcode.s) *Dest++ = 's';
+			Source++;
+			break;
+		case 'A':	// addressing mode
+			if (Opcode.flags & ARM_LOAD)
+			{
+				Dest += sprintf(Dest,"%s",ArmAddressingModes[LdmModes[Vars.Opcode.a]]);
+			} else {
+				Dest += sprintf(Dest,"%s",ArmAddressingModes[StmModes[Vars.Opcode.a]]);
+			}
+			Source++;
+			break;
+		case 'X':	// x flag
+			if (!Vars.Opcode.x) *Dest++ = 'b';
+			else *Dest++ = 't';
+			Source++;
+			break;
+		case 'Y':	// y flag
+			if (!Vars.Opcode.y) *Dest++ = 'b';
+			else *Dest++ = 't';
+			Source++;
+			break;
+		default:
+			*Dest++ = *Source++;
+			break;
+		}
+	}
+	*Dest = 0;
+}
+
+void CArmInstruction::FormatInstruction(const char* encoding, char* dest) const
+{
+/*	while (*encoding != 0)
+	{
+		switch (*encoding)
+		{
+		case 's':	//  reg
+			dest += sprintf(dest,"%s",Vars.rs.Name);
+			encoding += 2;
+			break;
+		case 'd':	//  reg
+			dest += sprintf(dest,"%s",Vars.rd.Name);
+			encoding += 2;
+			break;
+		case 'n':	//  reg
+			dest += sprintf(dest,"%s",Vars.rn.Name);
+			encoding += 2;
+			break;
+		case 'm':	//  reg
+			dest += sprintf(dest,"%s",Vars.rm.Name);
+			encoding += 2;
+			break;
+		case 'W':	// writeback
+			if (Vars.writeback == true) *dest++ = '!';
+			encoding++;
+			break;
+		case 'p':	// psr
+			if (Vars.psr == true) *dest++ = '^';
+			encoding++;
+			break;
+		case 'P':	// mrs/msr psr
+			dest += sprintf(dest,"%s",Vars.PsrData.spsr == true ? "spsr" : "cpsr");
+			if (encoding[1] == '0') dest += sprintf(dest,"%s",ArmPsrModes[Vars.PsrData.field]);
+			encoding += 2;
+			break;
+		case 'S':	// shifts
+			if (Vars.Shift.UseShift == true)
+			{
+				*dest++ = ',';
+				dest += sprintf(dest,"%s ",ArmShiftModes[Vars.Shift.Type]);
+				if (Vars.Shift.ShiftByRegister == true)
+				{
+					dest += sprintf(dest,"%s",Vars.Shift.reg.Name);
+				} else {
+					dest += sprintf(dest,"0x%X",Vars.Shift.ShiftAmount);
+				}
+			}
+			encoding += 2;
+			break;
+		case 'R':	// rlist
+			dest += sprintf(dest,"%s",Vars.RlistStr);
+			encoding++;
+			break;
+		case 'I':
+		case 'i':
+			dest += sprintf(dest,"0x%08X",Vars.OriginalImmediate);
+			encoding++;
+			break;
+		case 'j':
+			dest += sprintf(dest,"0x%0*X",(Vars.ImmediateBitLen+3)>>2,Vars.OriginalImmediate & ((1 << Vars.ImmediateBitLen)-1));
+			encoding+=2;
+			break;
+		case 'D':	// cop reg
+			dest += sprintf(dest,"%s",Vars.CopData.cd.Name);
+			encoding++;
+			break;
+		case 'N':	// cop reg
+			dest += sprintf(dest,"%s",Vars.CopData.cn.Name);
+			encoding++;
+			break;
+		case 'M':	// cop reg
+			dest += sprintf(dest,"%s",Vars.CopData.cm.Name);
+			encoding++;
+			break;
+		case 'X':	// cop number
+			dest += sprintf(dest,"%s",Vars.CopData.pn.Name);
+			encoding++;
+			break;
+		case 'Y':	// cop opcode
+			dest += sprintf(dest,"0x%02X",Vars.CopData.Cpop);
+			encoding++;
+			break;
+		case 'Z':	// cop inf
+			dest += sprintf(dest,"0x%02X",Vars.CopData.Cpinf);
+			encoding++;
+			break;
+		case 'v':	// sign
+			if (Vars.SignPlus == false) dest += sprintf(dest,"-");
+			encoding++;
+			break;
+		case '/':
+			encoding += 2;
+			break;
+		default:
+			*dest++ = *encoding++;
+			break;
+		}
+	}
+	*dest = 0;*/
+}
+
+void CArmInstruction::writeTempData(TempData& tempData) const
+{
+	char OpcodeName[32];
+	char str[256];
+
+	FormatOpcode(OpcodeName,Opcode.name);
+	int pos = sprintf(str,"   %s",OpcodeName);
+	while (pos < 11) str[pos++] = ' ';
+	str[pos] = 0;
+	FormatInstruction(Opcode.mask,&str[pos]);
+
+	tempData.writeLine(RamPos,str);
+}
+
+void CArmInstruction::Encode() const
+{
+	unsigned int encoding = Vars.Opcode.UseNewEncoding ? Vars.Opcode.NewEncoding : Opcode.encoding;
+
+	if ((Opcode.flags & ARM_UNCOND) == 0) encoding |= Vars.Opcode.c << 28;
+	if (Vars.Opcode.s) encoding |= (1 << 20);
+
+	unsigned char shiftType;
+	int shiftAmount;
+	if (Vars.Shift.UseFinal)
+	{
+		shiftType = Vars.Shift.FinalType;
+		shiftAmount = Vars.Shift.FinalShiftAmount;
+	} else {
+		shiftType = Vars.Shift.Type;
+		shiftAmount = Vars.Shift.ShiftAmount;
+	}
+
+	switch (Vars.Opcode.UseNewType ? Vars.Opcode.NewType : Opcode.type)
+	{
+	case ARM_TYPE3:		// ARM.3: Branch and Exchange (BX, BLX)
+		encoding |= (Vars.rn.num << 0);
+		break;
+	case ARM_TYPE4:		// ARM.4: Branch and Branch with Link (B, BL, BLX)
+		if ((Opcode.flags & ARM_HALFWORD) && (Vars.Immediate & 2)) encoding |= 1 << 24;
+		encoding |= (Vars.Immediate >> 2) & 0xFFFFFF;
+		break;
+	case ARM_TYPE5:		// ARM.5: Data Processing
+		if (Opcode.flags & ARM_N) encoding |= (Vars.rn.num << 16);
+		if (Opcode.flags & ARM_D) encoding |= (Vars.rd.num << 12);
+
+		if (Opcode.flags & ARM_IMMEDIATE)	// immediate als op2
+		{
+			encoding |= (shiftAmount << 7);
+			encoding |= Vars.Immediate;
+		} else if (Opcode.flags & ARM_REGISTER) {	// shifted register als op2
+			if (Vars.Shift.UseShift)
+			{
+				if (Vars.Shift.ShiftByRegister)
+				{
+					encoding |= (Vars.Shift.reg.num << 8);
+					encoding |= (1 << 4);
+				} else {	// shiftbyimmediate
+					encoding |= (shiftAmount << 7);
+				}
+				encoding |= (shiftType << 5);
+			}
+			encoding |= (Vars.rm.num << 0);
+		}
+		break;
+	case ARM_TYPE6:		// ARM.6: PSR Transfer (MRS, MSR)
+		if (Opcode.flags & ARM_MRS) //  MRS{cond} Rd,Psr          ;Rd = Psr
+		{
+			if (Vars.PsrData.spsr) encoding |= (1 << 22);
+			encoding |= (Vars.rd.num << 12);
+		} else {					//  MSR{cond} Psr{_field},Op  ;Psr[field] = Op
+			if (Vars.PsrData.spsr) encoding |= (1 << 22);
+			encoding |= (Vars.PsrData.field << 16);
+
+			if (Opcode.flags & ARM_REGISTER)
+			{
+				encoding |= (Vars.rm.num << 0);
+			} else if (Opcode.flags & ARM_IMMEDIATE)
+			{
+				encoding |= (shiftAmount << 7);
+				encoding |= Vars.Immediate;
+			}
+		}
+		break;
+	case ARM_TYPE7:		// ARM.7: Multiply and Multiply-Accumulate (MUL,MLA)
+		encoding |= (Vars.rd.num << 16);
+		if (Opcode.flags & ARM_N) encoding |= (Vars.rn.num << 12);
+		encoding |= (Vars.rs.num << 8);
+		if ((Opcode.flags & ARM_Y) && Vars.Opcode.y) encoding |= (1 << 6);
+		if ((Opcode.flags & ARM_X) && Vars.Opcode.x) encoding |= (1 << 5);
+		encoding |= (Vars.rm.num << 0);
+		break;
+	case ARM_TYPE9:		// ARM.9: Single Data Transfer (LDR, STR, PLD)
+		if (Vars.writeback) encoding |= (1 << 21);
+		if (Opcode.flags & ARM_N) encoding |= (Vars.rn.num << 16);
+		if (Opcode.flags & ARM_D) encoding |= (Vars.rd.num << 12);
+		if ((Opcode.flags & ARM_SIGN) && !Vars.SignPlus) encoding &= ~(1 << 23);
+		if ((Opcode.flags & ARM_ABS) && Vars.negative) encoding &= ~(1 << 23);
+		if (Opcode.flags & ARM_IMMEDIATE)
+		{
+			int immediate = Vars.Immediate;
+			if (immediate < 0)
+			{
+				encoding &= ~(1 << 23);
+				immediate = abs(immediate);
+			}
+			encoding |= (immediate << 0);
+		} else if (Opcode.flags & ARM_REGISTER)	// ... means the opcocde uses shifts with immediates
+		{
+			if (Vars.Shift.UseShift)
+			{
+				encoding |= (shiftAmount << 7);
+				encoding |= (shiftType << 5);
+			}
+			encoding |= (Vars.rm.num << 0);
+		}
+		break;
+	case ARM_TYPE10:	// ARM.10: Halfword, Doubleword, and Signed Data Transfer
+		if (Vars.writeback) encoding |= (1 << 21);
+		encoding |= (Vars.rn.num << 16);
+		encoding |= (Vars.rd.num << 12);
+		if ((Opcode.flags & ARM_SIGN) && !Vars.SignPlus) encoding &= ~(1 << 23);
+		if ((Opcode.flags & ARM_ABS) && Vars.negative) encoding &= ~(1 << 23);
+		if (Opcode.flags & ARM_IMMEDIATE)
+		{
+			int immediate = Vars.Immediate;
+			if (immediate < 0)
+			{
+				encoding &= ~(1 << 23);
+				immediate = abs(immediate);
+			}
+			encoding |= ((immediate & 0xF0) << 4);
+			encoding |= (immediate & 0xF);
+		} else if (Opcode.flags & ARM_REGISTER)
+		{
+			encoding |= (Vars.rm.num << 0);
+		}
+		break;
+	case ARM_TYPE11:	// ARM.11: Block Data Transfer (LDM,STM)
+		if (Opcode.flags & ARM_LOAD) encoding |= (LdmModes[Vars.Opcode.a] << 23);
+		else if (Opcode.flags & ARM_STORE) encoding |= (StmModes[Vars.Opcode.a] << 23);
+		if (Vars.psr) encoding |= (1 << 22);
+		if (Vars.writeback) encoding |= (1 << 21);
+		if (Opcode.flags & ARM_N) encoding |= (Vars.rn.num << 16);
+		encoding |= (Vars.rlist);
+		break;
+	case ARM_TYPE12:	// ARM.12: Single Data Swap (SWP)
+	case ARM_MISC:		// ARM.X: Count Leading Zeros
+		encoding |= (Vars.rm.num << 0);
+		encoding |= (Vars.rd.num << 12);
+		if (Opcode.flags & ARM_N) encoding |= (Vars.rn.num << 16);
+		break;
+	case ARM_TYPE13:	// ARM.13: Software Interrupt (SWI,BKPT)
+		if (Opcode.flags & ARM_SWI)
+		{
+			encoding |= Vars.Immediate;
+		} else {
+			encoding |= (Vars.Immediate & 0xF);
+			encoding |= (Vars.Immediate >> 4) << 8;
+		}
+		break;
+	case ARM_TYPE14:	// ARM.14: Coprocessor Data Operations (CDP)
+		if (Opcode.flags & ARM_COPOP) encoding |= (Vars.CopData.Cpop << 20);
+		encoding |= (Vars.CopData.cn.num << 16);
+		encoding |= (Vars.CopData.cd.num << 12);
+		encoding |= (Vars.CopData.pn.num << 8);
+		if (Opcode.flags & ARM_COPINF) encoding |= (Vars.CopData.Cpinf << 5);
+		encoding |= (Vars.CopData.cm.num << 0);
+		break;
+	case ARM_TYPE16:	// ARM.16: Coprocessor Register Transfers (MRC, MCR)
+		if (Opcode.flags & ARM_COPOP) encoding |= (Vars.CopData.Cpop << 21);
+		encoding |= (Vars.CopData.cn.num << 16);
+		encoding |= (Vars.rd.num << 12);
+		encoding |= (Vars.CopData.pn.num << 8);
+		if (Opcode.flags & ARM_COPINF) encoding |= (Vars.CopData.Cpinf << 5);
+		encoding |= (Vars.CopData.cm.num << 0);
+		break;
+	case ARM_TYPE17:	// ARM.X: Coprocessor Double-Register Transfer (MCRR,MRRC)
+		encoding |= (Vars.rn.num << 16);
+		encoding |= (Vars.rd.num << 12);
+		encoding |= (Vars.CopData.pn.num << 8);
+		encoding |= (Vars.CopData.Cpop << 4);
+		encoding |= (Vars.CopData.cm.num << 0);
+		break;
+	default:
+		printf("doh");
+	}
+
+	g_fileManager->writeU32((uint32_t)encoding);
+}
+
+// file: Archs/ARM/CThumbInstruction.cpp
+
+
+bool CThumbInstruction::Load(char* Name, char* Params)
+{
+	return false;
+}
+
+CThumbInstruction::CThumbInstruction(const tThumbOpcode& sourceOpcode, ThumbOpcodeVariables& vars)
+{
+	this->Opcode = sourceOpcode;
+	this->Vars = vars;
+
+	OpcodeSize = Opcode.flags & THUMB_LONG ? 4 : 2;
+}
+
+void CThumbInstruction::setPoolAddress(int64_t address)
+{
+	int pos = (int) address-((RamPos+4) & 0xFFFFFFFD);
+	if (pos < 0 || pos > 1020)
+	{
+		Logger::queueError(Logger::Error, "Literal pool out of range");
+		return;
+	}
+
+	Vars.Immediate = pos >> 2;
+}
+
+bool CThumbInstruction::Validate(const ValidateState &state)
+{
+	RamPos = g_fileManager->getVirtualAddress();
+
+	Vars.UseNewEncoding = false;
+
+	if (RamPos & 1)
+	{
+		Logger::queueError(Logger::Warning, "Opcode not halfword aligned");
+	}
+
+	if (Opcode.flags & THUMB_DS)
+	{
+		Vars.rs = Vars.rd;
+	}
+
+	bool memoryAdvanced = false;
+	if (Opcode.flags & THUMB_IMMEDIATE)
+	{
+		ExpressionValue value = Vars.ImmediateExpression.evaluate();
+
+		switch (value.type)
+		{
+		case ExpressionValueType::Integer:
+			Vars.Immediate = (int) value.intValue;
+			break;
+		case ExpressionValueType::Float:
+			if (!(Opcode.flags & THUMB_POOL))
+			{
+				Logger::queueError(Logger::Error, "Invalid expression type");
+				return false;
+			}
+
+			Vars.Immediate = (int) getFloatBits((float)value.floatValue);
+			break;
+		default:
+			Logger::queueError(Logger::Error, "Invalid expression type");
+			return false;
+		}
+
+		Vars.OriginalImmediate = Vars.Immediate;
+
+		g_fileManager->advanceMemory(OpcodeSize);
+		memoryAdvanced = true;
+
+		if (Opcode.flags & THUMB_BRANCH)
+		{
+			if (Opcode.flags & THUMB_EXCHANGE)
+			{
+				if (Vars.Immediate & 3)
+				{
+					Logger::queueError(Logger::Error, "Branch target must be word aligned");
+					return false;
+				}
+			} else {
+				if (Vars.Immediate & 1)
+				{
+					Logger::queueError(Logger::Error, "Branch target must be halfword aligned");
+					return false;
+				}
+			}
+
+			int num = (int) (Vars.Immediate-RamPos-4);
+
+			if (num >= (1 << Vars.ImmediateBitLen) || num < (0-(1 << Vars.ImmediateBitLen)))
+			{
+				Logger::queueError(Logger::Error, "Branch target 0x%X out of range",Vars.OriginalImmediate);
+				return false;
+			}
+
+			Vars.Immediate = num >> 1;
+			if (Opcode.flags & THUMB_EXCHANGE)
+			{
+				Vars.Immediate += Vars.Immediate&1;
+			}
+		} else if (Opcode.flags & THUMB_WORD)
+		{
+			if (Vars.Immediate & 3)	// not allowed
+			{
+				Logger::queueError(Logger::Error, "Immediate value must be a multiple of 4");
+				return false;
+			}
+			Vars.Immediate >>= 2;
+		} else if (Opcode.flags & THUMB_HALFWORD)
+		{
+			if (Vars.Immediate & 1)	// not allowed
+			{
+				Logger::queueError(Logger::Error, "Immediate value must be a multiple of 2");
+				return false;
+			}
+			Vars.Immediate >>= 1;
+		} else if (Opcode.flags & THUMB_POOL)
+		{
+			Arm.addPoolValue(this,Vars.Immediate);
+		} else if (Opcode.flags & THUMB_PCR)
+		{
+			if (Vars.Immediate & 3)
+			{
+				Logger::queueError(Logger::Error, "PC relative address must be word aligned");
+				return false;
+			}
+
+			int pos = Vars.Immediate-((RamPos+4) & 0xFFFFFFFD);
+			if (pos < 0 || pos > 1020)
+			{
+				Logger::queueError(Logger::Error, "PC relative address out of range");
+				return false;
+			}
+			Vars.Immediate = pos >> 2;
+		}
+
+		if (Opcode.flags & THUMB_ADDSUB_IMMEDIATE)
+		{
+			int max = (1 << Vars.ImmediateBitLen) - 1;
+			if (-max <= Vars.Immediate && Vars.Immediate < 0)
+			{
+				Vars.UseNewEncoding = true;
+				switch (Opcode.type)
+				{
+				case THUMB_TYPE2: // add rX,rY,imm
+					Vars.NewEncoding = Opcode.encoding ^ 0x0200;
+					break;
+				case THUMB_TYPE3: // add rX,imm
+					Vars.NewEncoding = Opcode.encoding ^ 0x0800;
+					break;
+				case THUMB_TYPE13: // add sp,imm
+					Vars.NewEncoding = Opcode.encoding ^ 0x0080;
+					break;
+				default:
+					Vars.UseNewEncoding = false;
+					break;
+				}
+				if (Vars.UseNewEncoding)
+				{
+					Vars.Immediate = -Vars.Immediate;
+				}
+			}
+		}
+
+		if (Opcode.type == THUMB_TYPE1)
+		{
+			int max = (Opcode.flags & THUMB_RIGHTSHIFT_IMMEDIATE) ? 32 : 31;
+			if (Vars.Immediate < 0 || Vars.Immediate > max)
+			{
+				Logger::queueError(Logger::Error, "Shift amount 0x%X out of range", Vars.OriginalImmediate);
+				return false;
+			}
+		} else if (Opcode.flags & THUMB_BRANCH)
+		{
+			int max = (1 << Vars.ImmediateBitLen) - 1;
+			Vars.Immediate &= max;
+		} else if (!(Opcode.flags & (THUMB_POOL | THUMB_PCR)))
+		{
+			int max = (1 << Vars.ImmediateBitLen) - 1;
+			if (Vars.Immediate < 0 || Vars.Immediate > max)
+			{
+				Logger::queueError(Logger::Error, "Immediate value 0x%X out of range", Vars.OriginalImmediate);
+				return false;
+			}
+		}
+	}
+
+	if (!memoryAdvanced)
+		g_fileManager->advanceMemory(OpcodeSize);
+
+	return false;
+}
+
+void CThumbInstruction::WriteInstruction(unsigned short encoding) const
+{
+	g_fileManager->writeU16(encoding);
+}
+
+void CThumbInstruction::Encode() const
+{
+	unsigned int encoding = Vars.UseNewEncoding ? Vars.NewEncoding : Opcode.encoding;
+
+	if (Opcode.type == THUMB_TYPE19)	// THUMB.19: long branch with link
+	{
+		if (Opcode.flags & THUMB_LONG)
+		{
+			encoding |= ((Vars.Immediate >> 11) & 0x7FF);
+			WriteInstruction(encoding);
+
+			if (Opcode.flags & THUMB_EXCHANGE)
+			{
+				WriteInstruction(0xE800 | (Vars.Immediate & 0x7FF));
+			} else {
+				WriteInstruction(0xF800 | (Vars.Immediate & 0x7FF));
+			}
+		} else {
+			if (Opcode.flags & THUMB_IMMEDIATE)
+				encoding |= Vars.Immediate & 0x7FF;
+			WriteInstruction(encoding);
+		}
+	} else {
+		switch (Opcode.type)
+		{
+		case THUMB_TYPE1:	// THUMB.1: move shifted register
+			if ((Opcode.flags & THUMB_RIGHTSHIFT_IMMEDIATE) && (Vars.Immediate == 0))
+			{
+				encoding = 0x0000;
+			}
+			encoding |= ((Vars.Immediate & 0x1F) << 6);
+			encoding |= (Vars.rs.num << 3);
+			encoding |= (Vars.rd.num << 0);
+			break;
+		case THUMB_TYPE2:	// THUMB.2: add/subtract
+			if (Opcode.flags & THUMB_IMMEDIATE)
+			{
+				encoding |= (Vars.Immediate << 6);
+			} else if (Opcode.flags & THUMB_REGISTER)
+			{
+				encoding |= (Vars.rn.num << 6);
+			}
+			encoding |= (Vars.rs.num << 3);
+			encoding |= (Vars.rd.num << 0);
+			break;
+		case THUMB_TYPE3:	// THUMB.3: move/compare/add/subtract immediate
+			encoding |= (Vars.rd.num << 8);
+			encoding |= (Vars.Immediate << 0);
+			break;
+		case THUMB_TYPE4:	// THUMB.4: ALU operations
+			encoding |= (Vars.rs.num << 3);
+			encoding |= (Vars.rd.num << 0);
+			break;
+		case THUMB_TYPE5:	// THUMB.5: Hi register operations/branch exchange
+			if (Opcode.flags & THUMB_D)
+			{
+				if (Vars.rd.num > 0x7) encoding |= (1 << 7);
+				encoding |= (Vars.rd.num & 0x7);
+			}
+			if (Opcode.flags & THUMB_S)
+			{
+				if (Vars.rs.num > 0x7) encoding |= (1 << 6);
+				encoding |= ((Vars.rs.num & 0x7) << 3);
+			}
+			break;
+		case THUMB_TYPE6:	// THUMB.6: load PC-relative
+			encoding |= (Vars.rd.num << 8);
+			encoding |= (Vars.Immediate << 0);
+			break;
+		case THUMB_TYPE7:	// THUMB.7: load/store with register offset
+		case THUMB_TYPE8:	// THUMB.8: load/store sign-extended byte/halfword
+			encoding |= (Vars.ro.num << 6);
+			encoding |= (Vars.rs.num << 3);
+			encoding |= (Vars.rd.num << 0);
+			break;
+		case THUMB_TYPE9:	// THUMB.9: load/store with immediate offset
+		case THUMB_TYPE10:	// THUMB.10: load/store halfword
+			if (Opcode.flags & THUMB_IMMEDIATE) encoding |= (Vars.Immediate << 6);
+			encoding |= (Vars.rs.num << 3);
+			encoding |= (Vars.rd.num << 0);
+			break;
+		case THUMB_TYPE11:	// THUMB.11: load/store SP-relative
+			encoding |= (Vars.rd.num << 8);
+			if (Opcode.flags & THUMB_IMMEDIATE) encoding |= (Vars.Immediate << 0);
+			break;
+		case THUMB_TYPE12:	// THUMB.12: get relative address
+			encoding |= (Vars.rd.num << 8);
+			encoding |= (Vars.Immediate << 0);
+			break;
+		case THUMB_TYPE13:	// THUMB.13: add/subtract offset to/from stack pointer
+			encoding |= (Vars.Immediate << 0);
+			break;
+		case THUMB_TYPE14:	// THUMB.14: push/pop registers
+			if (Vars.rlist & 0xC000) encoding |= (1 << 8); // r14 oder r15
+			encoding |= (Vars.rlist & 0xFF);
+			break;
+		case THUMB_TYPE15:	// THUMB.15: multiple load/store
+			encoding |= (Vars.rd.num << 8);
+			encoding |= (Vars.rlist & 0xFF);
+			break;
+		case THUMB_TYPE16:	// THUMB.16: conditional branch
+		case THUMB_TYPE17:	// THUMB.17: software interrupt and breakpoint
+		case THUMB_TYPE18:	// THUMB.18: unconditional branch
+			encoding |= (Vars.Immediate << 0);
+			break;
+		}
+		WriteInstruction(encoding);
+	}
+}
+
+void CThumbInstruction::FormatInstruction(const char* encoding, char* dest) const
+{
+/*	while (*encoding != 0)
+	{
+		switch (*encoding)
+		{
+		case 'D':
+		case 'd':
+			dest += sprintf(dest,"%s",Vars.rd.Name);
+			encoding++;
+			break;
+		case 'S':
+		case 's':
+			dest += sprintf(dest,"%s",Vars.rs.Name);
+			encoding++;
+			break;
+		case 'n':
+			dest += sprintf(dest,"%s",Vars.rn.Name);
+			encoding++;
+			break;
+		case 'o':
+			dest += sprintf(dest,"%s",Vars.ro.Name);
+			encoding++;
+			break;
+		case 'I':
+			dest += sprintf(dest,"0x%0*X",(Vars.ImmediateBitLen+3)>>2,Vars.OriginalImmediate);
+			encoding += 2;
+			break;
+		case 'i':
+			dest += sprintf(dest,"0x%0*X",(Vars.ImmediateBitLen+3)>>2,Vars.OriginalImmediate & ((1 << Vars.ImmediateBitLen)-1));
+			encoding += 2;
+			break;
+		case 'r':	// forced register
+			dest += sprintf(dest,"r%d",*(encoding+1));
+			encoding += 2;
+			break;
+		case 'R':
+			dest += sprintf(dest,"%s",Vars.RlistStr);
+			encoding += 3;
+			break;
+		case '/':	// optional
+			encoding += 2;
+			break;
+		default:
+			*dest++ = *encoding++;
+			break;
+		}
+	}
+	*dest = 0;*/
+}
+
+void CThumbInstruction::writeTempData(TempData& tempData) const
+{
+	char str[256];
+
+	int pos = sprintf(str,"   %s",Opcode.name);
+	while (pos < 11) str[pos++] = ' ';
+	str[pos] = 0;
+	FormatInstruction(Opcode.mask,&str[pos]);
+
+	tempData.writeLine(RamPos,str);
+}
+
+// file: Archs/ARM/ArmElfRelocator.cpp
+
+
+#include <algorithm>
+
+
+inline int signExtend(int value, int bitsLength)
+{
+	return (value << (32-bitsLength)) >> (32-bitsLength);
+}
+
+bool ArmElfRelocator::isDummyRelocationType(int type) const
+{
+	// R_ARM_V4BX marks the position of a bx opcode, and does not
+	// cause any actual relocations
+	return type == R_ARM_V4BX;
+}
+
+int ArmElfRelocator::expectedMachine() const
+{
+	return EM_ARM;
+}
+
+/*
+	S = symbol address
+	T = 1 if symbol is a thumb mode function, 0 otherwise
+	P = offset of opcode
+	A = addend
+*/
+
+bool ArmElfRelocator::relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors)
+{
+	int t = (data.targetSymbolType == STT_FUNC && data.targetSymbolInfo != 0) ? 1 : 0;
+	int p = (int) data.opcodeOffset;
+	int s = (int) data.relocationBase;
+
+	uint32_t opcode = data.opcode;
+	switch (type)
+	{
+	case R_ARM_ABS32:		// (S + A) | T
+	case R_ARM_TARGET1:
+		opcode = (int) (opcode + data.relocationBase) | t;
+		break;
+	case R_ARM_THM_CALL:	// ((S + A) | T) - P
+		{
+			unsigned short first = opcode & 0xFFFF;
+			unsigned short second = (opcode >> 16) & 0xFFFF;
+			int opField = ((first & 0x7FF) << 11) | (second & 0x7FF);
+			int a = signExtend(opField << 1,23);
+			int value = (s+a) - p;
+
+			first &= ~0x7FF;
+			second &= ~0x7FF;
+
+			if (t == 1)
+			{
+				if (data.relocationBase % 2)
+				{
+					errors.emplace_back("Branch target must be halfword aligned");
+					return false;
+				}
+			} else {
+				if (arm9 == false)
+				{
+					errors.emplace_back("Cannot call ARM function from THUMB code without stub");
+					return false;
+				}
+
+				if (data.relocationBase % 4)
+				{
+					errors.emplace_back("Branch target must be word aligned");
+					return false;
+				}
+
+				second = 0xE800;
+			}
+
+			if (abs(value) >= 0x400000)
+			{
+				errors.emplace_back(tfm::format("Branch target %08X out of range",data.relocationBase));
+				return false;
+			}
+
+			value >>= 1;
+			first |= (value >> 11) & 0x7FF;
+			second |= value & 0x7FF;
+			opcode = first | (second << 16);
+		}
+		break;
+	case R_ARM_CALL:		// ((S + A) | T) - P
+	case R_ARM_JUMP24:		// ((S + A) | T) - P
+		{
+			int condField = (opcode >> 28) & 0xF;
+			int opField = (opcode & 0xFFFFFF) << 2;
+			opcode &= ~0xFFFFFF;
+
+			int a = signExtend(opField,26);
+			int value = (s+a) - p;
+
+			if (t == 1)
+			{
+				if (data.relocationBase % 2)
+				{
+					errors.emplace_back("Branch target must be halfword aligned");
+					return false;
+				}
+
+				if (type == R_ARM_JUMP24)
+				{
+					errors.emplace_back("Cannot jump from ARM to THUMB without link");
+					return false;
+				}
+
+				if (arm9 == false)
+				{
+					errors.emplace_back("Cannot call THUMB function from ARM code without stub");
+					return false;
+				}
+
+				if (condField != 0xE)
+				{
+					errors.emplace_back("Cannot convert conditional bl into blx");
+					return false;
+				}
+
+				opcode = 0xFA000000;
+				if (value & 2)
+					opcode |= (1 << 24);
+			} else {
+				if (data.relocationBase % 4)
+				{
+					errors.emplace_back("Branch target must be word aligned");
+					return false;
+				}
+			}
+
+			if (abs(value) >= 0x2000000)
+			{
+				errors.emplace_back(tfm::format("Branch target %08X out of range",data.relocationBase));
+				return false;
+			}
+
+			opcode |= (value >> 2) & 0xFFFFFF;
+		}
+		break;
+	default:
+		errors.emplace_back(tfm::format("Unknown ARM relocation type %d",type));
+		return false;
+	}
+
+	actions.emplace_back(data.opcodeOffset, opcode);
+	return true;
+}
+
+void ArmElfRelocator::setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType)
+{
+	if (symbolType == STT_FUNC)
+	{
+		data.targetSymbolInfo = symbolAddress & 1;
+		symbolAddress &= ~1;
+	}
+
+	data.symbolAddress = symbolAddress;
+	data.targetSymbolType = symbolType;
+}
+
+const char* ctorTemplate = R"(
+	push	r4-r7,r14
+	ldr	r4,=%ctorTable%
+	ldr	r5,=%ctorTable%+%ctorTableSize%
+	%outerLoopLabel%:
+	ldr	r6,[r4]
+	ldr	r7,[r4,4]
+	add	r4,8
+	%innerLoopLabel%:
+	ldr	r0,[r6]
+	add	r6,4
+	.if %simpleMode%
+		blx	r0
+	.else
+		bl	%stubName%
+	.endif
+	cmp	r6,r7
+	blt	%innerLooplabel%
+	cmp	r4,r5
+	blt	%outerLoopLabel%
+	.if %simpleMode%
+		pop	r4-r7,r15
+	.else
+		pop	r4-r7
+		pop	r0
+		%stubName%:
+		bx	r0
+	.endif
+	.pool
+	%ctorTable%:
+	.word %ctorContent%"
+)";
+
+std::unique_ptr<CAssemblerCommand> ArmElfRelocator::generateCtorStub(std::vector<ElfRelocatorCtor>& ctors)
+{
+	Parser parser;
+	if (ctors.size() != 0)
+	{
+		bool simpleMode = arm9 == false && Arm.GetThumbMode();
+
+		// create constructor table
+		std::string table;
+		for (size_t i = 0; i < ctors.size(); i++)
+		{
+			if (i != 0)
+				table += ',';
+			table += tfm::format("%s,%s+0x%08X",ctors[i].symbolName,ctors[i].symbolName,ctors[i].size);
+		}
+
+		return parser.parseTemplate(ctorTemplate,{
+			{ "%ctorTable%",		Global.symbolTable.getUniqueLabelName().string() },
+			{ "%ctorTableSize%",	tfm::format("%d",ctors.size()*8) },
+			{ "%outerLoopLabel%",	Global.symbolTable.getUniqueLabelName().string() },
+			{ "%innerLoopLabel%",	Global.symbolTable.getUniqueLabelName().string() },
+			{ "%stubName%",		Global.symbolTable.getUniqueLabelName().string() },
+			{ "%simpleMode%",		simpleMode ? "1" : "0" },
+			{ "%ctorContent%",		table },
+		});
+	} else {
+		return parser.parseTemplate("bx r14");
+	}
+}
+
+// file: Archs/ARM/ArmExpressionFunctions.cpp
+
+
+#define GET_PARAM(params,index,dest) \
+	if (getExpFuncParameter(params,index,dest,funcName,false) == false) \
+		return ExpressionValue();
+
+ExpressionValue expFuncIsArm(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
+{
+	bool isArm = &Architecture::current() == &Arm && !Arm.GetThumbMode();
+	return ExpressionValue(isArm ? INT64_C(1) : INT64_C(0));
+}
+
+ExpressionValue expFuncIsThumb(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
+{
+	bool isThumb = Arm.GetThumbMode();
+	return ExpressionValue(isThumb ? INT64_C(1) : INT64_C(0));
+}
+
+const ExpressionFunctionEntry armExpressionFunctions[] = {
+	{ "isarm",   &expFuncIsArm,   0, 0, ExpFuncSafety::Safe },
+	{ "isthumb", &expFuncIsThumb, 0, 0, ExpFuncSafety::Safe },
+};
+
+void registerArmExpressionFunctions(ExpressionFunctionHandler &handler)
+{
+	for (const auto &func : armExpressionFunctions)
+	{
+		handler.addFunction(Identifier(func.name), func.function, func.minParams, func.maxParams, func.safety);
+	}
+}
+
+// file: Archs/ARM/Pool.cpp
+
+
+#include <unordered_map>
+
+ArmStateCommand::ArmStateCommand(bool state)
+{
+	armstate = state;
+}
+
+bool ArmStateCommand::Validate(const ValidateState &state)
+{
+	RamPos = g_fileManager->getVirtualAddress();
+	return false;
+}
+
+void ArmStateCommand::writeSymData(SymbolData& symData) const
+{
+	// TODO: find a less ugly way to check for undefined memory positions
+	if (RamPos == -1)
+		return;
+
+	if (armstate)
+	{
+		symData.addLabel(RamPos, ".arm");
+	} else {
+		symData.addLabel(RamPos, ".thumb");
+	}
+}
+
+
+ArmPoolCommand::ArmPoolCommand()
+{
+	position = -1;
+}
+
+bool ArmPoolCommand::Validate(const ValidateState &state)
+{
+	int64_t fileID = g_fileManager->getOpenFileID();
+	if (position != -1)
+		Allocations::forgetPool(fileID, position, values.size() * 4);
+	position = g_fileManager->getVirtualAddress();
+
+	size_t oldSize = values.size();
+	values.clear();
+
+	std::unordered_map<int32_t, size_t> usedValues;
+	for (ArmPoolEntry& entry: Arm.getPoolContent())
+	{
+		size_t index = values.size();
+
+		// try to filter redundant values, but only if
+		// we aren't in an unordinarily long validation loop
+		if (state.passes < 10)
+		{
+			auto it = usedValues.find(entry.value);
+			if (it != usedValues.end())
+				index = it->second;
+		}
+
+		if (index == values.size())
+		{
+			usedValues[entry.value] = index;
+			values.push_back(entry.value);
+		}
+
+		entry.command->applyFileInfo();
+		entry.command->setPoolAddress(position+index*4);
+	}
+
+	Arm.clearPoolContent();
+	g_fileManager->advanceMemory(values.size()*4);
+	Allocations::setPool(fileID, position, values.size() * 4);
+
+	return oldSize != values.size();
+}
+
+void ArmPoolCommand::Encode() const
+{
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		int32_t value = values[i];
+		g_fileManager->writeU32(value);
+	}
+}
+
+void ArmPoolCommand::writeTempData(TempData& tempData) const
+{
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		int32_t value = values[i];
+		tempData.writeLine(position+i*4,tfm::format(".word 0x%08X",value));
+	}
+}
+
+void ArmPoolCommand::writeSymData(SymbolData& symData) const
+{
+	if (values.size() != 0)
+	{
+		symData.addLabel(position, ".pool");
+		symData.addData(position,values.size()*4,SymbolData::Data32);
+	}
+}
+
+// file: Archs/ARM/ThumbOpcodes.cpp
+
+
+/*	Placeholders:
+	d	register
+	s	register
+	n	register
+	o	register
+	D	high register
+	S	high register
+	i	x bit immediate
+	I	32 bit immediate
+	p	load pc relative immediate
+	P	literal pool value
+	R	register list
+	r	specific register
+*/
+
+const tThumbOpcode ThumbOpcodes[] = {
+//	Name        Mask                Encod   Type          Len   Flags
+	{ "lsl",   "d,s,/#i\x05",      0x0000, THUMB_TYPE1,    2,  THUMB_IMMEDIATE },
+	{ "lsl",   "d,/#i\x05",        0x0000, THUMB_TYPE1,    2,  THUMB_IMMEDIATE|THUMB_DS },
+	{ "asl",   "d,s,/#i\x05",      0x0000, THUMB_TYPE1,    2,  THUMB_IMMEDIATE },
+	{ "asl",   "d,/#i\x05",        0x0000, THUMB_TYPE1,    2,  THUMB_IMMEDIATE|THUMB_DS },
+	{ "lsr",   "d,s,/#i\x05",      0x0800, THUMB_TYPE1,    2,  THUMB_IMMEDIATE|THUMB_RIGHTSHIFT_IMMEDIATE },
+	{ "lsr",   "d,/#i\x05",        0x0800, THUMB_TYPE1,    2,  THUMB_IMMEDIATE|THUMB_RIGHTSHIFT_IMMEDIATE|THUMB_DS },
+	{ "asr",   "d,s,/#i\x05",      0x1000, THUMB_TYPE1,    2,  THUMB_IMMEDIATE|THUMB_RIGHTSHIFT_IMMEDIATE },
+	{ "asr",   "d,/#i\x05",        0x1000, THUMB_TYPE1,    2,  THUMB_IMMEDIATE|THUMB_RIGHTSHIFT_IMMEDIATE|THUMB_DS },
+
+	{ "add",   "d,s,n",            0x1800, THUMB_TYPE2,    2,  THUMB_REGISTER },
+	{ "add",   "d,n",              0x1800, THUMB_TYPE2,    2,  THUMB_REGISTER|THUMB_DS },
+	{ "sub",   "d,s,n",            0x1A00, THUMB_TYPE2,    2,  THUMB_REGISTER },
+	{ "sub",   "d,n",              0x1A00, THUMB_TYPE2,    2,  THUMB_REGISTER|THUMB_DS },
+	{ "add",   "d,s,/#i\x03",      0x1C00, THUMB_TYPE2,    2,  THUMB_IMMEDIATE|THUMB_ADDSUB_IMMEDIATE },
+	{ "sub",   "d,s,/#i\x03",      0x1E00, THUMB_TYPE2,    2,  THUMB_IMMEDIATE|THUMB_ADDSUB_IMMEDIATE },
+	{ "mov",   "d,s",              0x1C00, THUMB_TYPE2,    2,  0 },
+
+	{ "mov",   "d,/#i\x08",        0x2000, THUMB_TYPE3,    2,  THUMB_IMMEDIATE },
+	{ "cmp",   "d,/#i\x08",        0x2800, THUMB_TYPE3,    2,  THUMB_IMMEDIATE },
+	{ "add",   "d,/#i\x08",        0x3000, THUMB_TYPE3,    2,  THUMB_IMMEDIATE|THUMB_ADDSUB_IMMEDIATE },
+	{ "sub",   "d,/#i\x08",        0x3800, THUMB_TYPE3,    2,  THUMB_IMMEDIATE|THUMB_ADDSUB_IMMEDIATE },
+
+	{ "and",   "d,s",              0x4000, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "eor",   "d,s",              0x4040, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "xor",   "d,s",              0x4040, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "lsl",   "d,s",              0x4080, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "lsr",   "d,s",              0x40C0, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "asr",   "d,s",              0x4100, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "adc",   "d,s",              0x4140, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "sbc",   "d,s",              0x4180, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "ror",   "d,s",              0x41C0, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "tst",   "d,s",              0x4200, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "neg",   "d,s",              0x4240, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "cmp",   "d,s",              0x4280, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "cmn",   "d,s",              0x42C0, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "orr",   "d,s",              0x4300, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "mul",   "d,s",              0x4340, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "bic",   "d,s",              0x4380, THUMB_TYPE4,    2,  THUMB_REGISTER },
+	{ "mvn",   "d,s",              0x43C0, THUMB_TYPE4,    2,  THUMB_REGISTER },
+
+	{ "add",   "D,S",              0x4400, THUMB_TYPE5,    2,  THUMB_D|THUMB_S },
+	{ "cmp",   "D,S",              0x4500, THUMB_TYPE5,    2,  THUMB_D|THUMB_S },
+	{ "mov",   "D,S",              0x4600, THUMB_TYPE5,    2,  THUMB_D|THUMB_S },
+	{ "nop",   "",                 0x46C0, THUMB_TYPE5,    2,  0 },
+	{ "bx",    "S",                0x4700, THUMB_TYPE5,    2,  THUMB_S },
+	{ "blx",   "S",                0x4780, THUMB_TYPE5,    2,  THUMB_S|THUMB_ARM9 },
+
+	{ "ldr",   "d,[r\xF]",         0x4800, THUMB_TYPE6,    2,  0 },
+	{ "ldr",   "d,[r\xF,/#i\x08]", 0x4800, THUMB_TYPE6,    2,  THUMB_IMMEDIATE|THUMB_WORD },
+	{ "ldr",   "d,[/#I\x20]",      0x4800, THUMB_TYPE6,    2,  THUMB_IMMEDIATE|THUMB_PCR },
+	{ "ldr",   "d,=/#I\x20",       0x4800, THUMB_TYPE6,    2,  THUMB_IMMEDIATE|THUMB_POOL },
+
+	{ "str",   "d,[s,o]",          0x5000, THUMB_TYPE7,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "strb",  "d,[s,o]",          0x5400, THUMB_TYPE7,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldr",   "d,[s,o]",          0x5800, THUMB_TYPE7,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldrb",  "d,[s,o]",          0x5C00, THUMB_TYPE7,    2,  THUMB_D|THUMB_S|THUMB_O },
+
+	{ "strh",   "d,[s,o]",         0x5200, THUMB_TYPE8,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldsb",   "d,[s,o]",         0x5600, THUMB_TYPE8,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldrsb",  "d,[s,o]",         0x5600, THUMB_TYPE8,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldrh",   "d,[s,o]",         0x5A00, THUMB_TYPE8,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldsh",   "d,[s,o]",         0x5E00, THUMB_TYPE8,    2,  THUMB_D|THUMB_S|THUMB_O },
+	{ "ldrsh",  "d,[s,o]",         0x5E00, THUMB_TYPE8,    2,  THUMB_D|THUMB_S|THUMB_O },
+
+	{ "str",   "d,[s,/#i\x05]",    0x6000, THUMB_TYPE9,    2,  THUMB_D|THUMB_S|THUMB_IMMEDIATE|THUMB_WORD },
+	{ "str",   "d,[s]",            0x6000, THUMB_TYPE9,    2,  THUMB_D|THUMB_S },
+	{ "ldr",   "d,[s,/#i\x05]",    0x6800, THUMB_TYPE9,    2,  THUMB_D|THUMB_S|THUMB_IMMEDIATE|THUMB_WORD },
+	{ "ldr",   "d,[s]",            0x6800, THUMB_TYPE9,    2,  THUMB_D|THUMB_S },
+	{ "strb",  "d,[s,/#i\x05]",    0x7000, THUMB_TYPE9,    2,  THUMB_D|THUMB_S|THUMB_IMMEDIATE },
+	{ "strb",  "d,[s]",            0x7000, THUMB_TYPE9,    2,  THUMB_D|THUMB_S },
+	{ "ldrb",  "d,[s,/#i\x05]",    0x7800, THUMB_TYPE9,    2,  THUMB_D|THUMB_S|THUMB_IMMEDIATE },
+	{ "ldrb",  "d,[s]",            0x7800, THUMB_TYPE9,    2,  THUMB_D|THUMB_S },
+
+	{ "strh",  "d,[s,/#i\x05]",    0x8000, THUMB_TYPE10,   2,  THUMB_D|THUMB_S|THUMB_IMMEDIATE|THUMB_HALFWORD },
+	{ "strh",  "d,[s]",            0x8000, THUMB_TYPE10,   2,  THUMB_D|THUMB_S },
+	{ "ldrh",  "d,[s,/#i\x05]",    0x8800, THUMB_TYPE10,   2,  THUMB_D|THUMB_S|THUMB_IMMEDIATE|THUMB_HALFWORD },
+	{ "ldrh",  "d,[s]",            0x8800, THUMB_TYPE10,   2,  THUMB_D|THUMB_S },
+
+	{ "str",   "d,[r\xD,/#i\x08]", 0x9000, THUMB_TYPE11,   2,  THUMB_D|THUMB_IMMEDIATE|THUMB_WORD },
+	{ "str",   "d,[r\xD]",         0x9000, THUMB_TYPE11,   2,  THUMB_D },
+	{ "ldr",   "d,[r\xD,/#i\x08]", 0x9800, THUMB_TYPE11,   2,  THUMB_D|THUMB_IMMEDIATE|THUMB_WORD },
+	{ "ldr",   "d,[r\xD]",         0x9800, THUMB_TYPE11,   2,  THUMB_D },
+
+	{ "add",   "d,r\xF,/#i\x08",   0xA000, THUMB_TYPE12,   2,  THUMB_D|THUMB_IMMEDIATE|THUMB_WORD },
+	{ "add",   "d,=/#i\x20",       0xA000, THUMB_TYPE12,   2,  THUMB_D|THUMB_IMMEDIATE|THUMB_PCR },
+	{ "add",   "d,r\xD,/#i\x08",   0xA800, THUMB_TYPE12,   2,  THUMB_D|THUMB_IMMEDIATE|THUMB_WORD },
+
+	{ "add",   "r\xD,/#i\x07",     0xB000, THUMB_TYPE13,   2,  THUMB_IMMEDIATE|THUMB_WORD|THUMB_ADDSUB_IMMEDIATE },
+	{ "sub",   "r\xD,/#i\x07",     0xB080, THUMB_TYPE13,   2,  THUMB_IMMEDIATE|THUMB_WORD|THUMB_ADDSUB_IMMEDIATE },
+
+	{ "add",   "r\xD,r\xD,/#i\x07",0xB000, THUMB_TYPE13,   2,  THUMB_IMMEDIATE|THUMB_WORD|THUMB_ADDSUB_IMMEDIATE },
+	{ "sub",   "r\xD,r\xD,/#i\x07",0xB080, THUMB_TYPE13,   2,  THUMB_IMMEDIATE|THUMB_WORD|THUMB_ADDSUB_IMMEDIATE },
+
+	{ "push",  "/{R\xFF\x40/}",    0xB400, THUMB_TYPE14,   2,  THUMB_RLIST },
+	{ "pop",   "/{R\xFF\x80/}",    0xBC00, THUMB_TYPE14,   2,  THUMB_RLIST },
+
+	{ "stmia", "/[d/]!,/{R\xFF\x00/}", 0xC000, THUMB_TYPE15,   2,  THUMB_D|THUMB_RLIST },
+	{ "ldmia", "/[d/]!,/{R\xFF\x00/}", 0xC800, THUMB_TYPE15,   2,  THUMB_D|THUMB_RLIST },
+
+	{ "beq",   "/#I\x08",          0xD000, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH },
+	{ "bne",   "/#I\x08",          0xD100, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bcs",   "/#I\x08",          0xD200, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bhs",   "/#I\x08",          0xD200, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bcc",   "/#I\x08",          0xD300, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "blo",   "/#I\x08",          0xD300, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bmi",   "/#I\x08",          0xD400, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bpl",   "/#I\x08",          0xD500, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bvs",   "/#I\x08",          0xD600, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bvc",   "/#I\x08",          0xD700, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bhi",   "/#I\x08",          0xD800, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bls",   "/#I\x08",          0xD900, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bge",   "/#I\x08",          0xDA00, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "blt",   "/#I\x08",          0xDB00, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "bgt",   "/#I\x08",          0xDC00, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+	{ "ble",   "/#I\x08",          0xDD00, THUMB_TYPE16,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+
+	{ "swi",   "/#i\x08",          0xDF00, THUMB_TYPE17,   2,  THUMB_IMMEDIATE },
+	{ "bkpt",  "/#i\x08",          0xBE00, THUMB_TYPE17,   2,  THUMB_IMMEDIATE|THUMB_ARM9 },
+
+	{ "b",     "/#I\x0B",          0xE000, THUMB_TYPE18,   2,  THUMB_IMMEDIATE|THUMB_BRANCH  },
+
+	{ "bl",    "r\xE",             0xF800, THUMB_TYPE19,   4,  0 },
+	{ "bl",    "r\xE+/#I\x0B",     0xF800, THUMB_TYPE19,   4,  THUMB_IMMEDIATE|THUMB_HALFWORD },
+	{ "blh",   "/#I\x0B",          0xF800, THUMB_TYPE19,   4,  THUMB_IMMEDIATE|THUMB_HALFWORD },
+	{ "bl",    "/#I\x16",          0xF000, THUMB_TYPE19,   4,  THUMB_IMMEDIATE|THUMB_BRANCH|THUMB_LONG  },
+	{ "blx",   "/#I\x16",          0xF000, THUMB_TYPE19,   4,  THUMB_IMMEDIATE|THUMB_ARM9|THUMB_EXCHANGE|THUMB_BRANCH|THUMB_LONG },
+	{ "bl",    "/#I\x16",          0xF800, THUMB_TYPE19,   4,  THUMB_IMMEDIATE|THUMB_BRANCH|THUMB_LONG },
+	{ "blx",   "/#I\x16",          0xF800, THUMB_TYPE19,   4,  THUMB_IMMEDIATE|THUMB_ARM9|THUMB_EXCHANGE|THUMB_BRANCH|THUMB_LONG },
+
+	{ nullptr,  nullptr,            0,      0,              0,  0 }
+};
+
+
+// file: Archs/ARM/ArmParser.cpp
+
+
+#define CHECK(exp) if (!(exp)) return false;
+
+const ArmRegisterDescriptor armRegisters[] = {
+	{ "r0",  0 },  { "r1",  1 },  { "r2",  2 },  { "r3",  3 },
+	{ "r4",  4 },  { "r5",  5 },  { "r6",  6 },  { "r7",  7 },
+	{ "r8",  8 },  { "r9",  9 },  { "r10", 10 }, { "r11", 11 },
+	{ "r12", 12 }, { "r13", 13 }, { "sp",  13 }, { "r14", 14 },
+	{ "lr",  14 }, { "r15", 15 }, { "pc",  15 },
+};
+
+const ArmRegisterDescriptor armCopRegisters[] = {
+	{ "c0",  0 },  { "c1",  1 },  { "c2",  2 },  { "c3",  3 },
+	{ "c4",  4 },  { "c5",  5 },  { "c6",  6 },  { "c7",  7 },
+	{ "c8",  8 },  { "c9",  9 },  { "c10", 10 }, { "c11", 11 },
+	{ "c12", 12 }, { "c13", 13 }, { "c14", 14 }, { "c15", 15 },
+};
+
+const ArmRegisterDescriptor armCopNumbers[] = {
+	{ "p0",  0 },  { "p1",  1 },  { "p2",  2 },  { "p3",  3 },
+	{ "p4",  4 },  { "p5",  5 },  { "p6",  6 },  { "p7",  7 },
+	{ "p8",  8 },  { "p9",  9 },  { "p10", 10 }, { "p11", 11 },
+	{ "p12", 12 }, { "p13", 13 }, { "p14", 14 }, { "p15", 15 },
+};
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveThumb(Parser& parser, int flags)
+{
+	Arm.SetThumbMode(true);
+	return std::make_unique<ArmStateCommand>(false);
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveArm(Parser& parser, int flags)
+{
+	Arm.SetThumbMode(false);
+	return std::make_unique<ArmStateCommand>(true);
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectivePool(Parser& parser, int flags)
+{
+	auto seq = std::make_unique<CommandSequence>();
+	seq->addCommand(std::make_unique<CDirectiveAlignFill>(4,CDirectiveAlignFill::AlignVirtual));
+	seq->addCommand(std::make_unique<ArmPoolCommand>());
+
+	return seq;
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineArmLabel(Parser& parser, int flags)
+{
+	return parseDirectiveDefineLabel(parser, flags, false);
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineThumbLabel(Parser& parser, int flags)
+{
+	return parseDirectiveDefineLabel(parser, flags, true);
+}
+
+const char* msgTemplate = R"(
+	mov    r12,r12
+	b      %after%
+	.byte  0x64,0x64,0x00,0x00
+	.if strlen(%text%) > 120
+		.error "Maximum length of No$gba debug message is 120 bytes"
+	.elseif strlen(%text%) > 0
+		.ascii %text%
+	.else
+		.byte  0x00
+	.endif
+	.align %alignment%,0x00
+	%after%:
+)";
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveMsg(Parser& parser, int flags)
+{
+	Expression text = parser.parseExpression();
+	if (!text.isLoaded())
+		return nullptr;
+
+	return parser.parseTemplate(msgTemplate, {
+		{ "%after%", Global.symbolTable.getUniqueLabelName(true).string() },
+		{ "%text%", text.toString() },
+		{ "%alignment%", Arm.GetThumbMode() ? "2" : "4" }
+	});
+}
+
+const DirectiveMap armDirectives = {
+	{ ".thumb",	{ &parseDirectiveThumb,	0 } },
+	{ ".arm",		{ &parseDirectiveArm,	0 } },
+	{ ".pool",		{ &parseDirectivePool,	0 } },
+	{ ".msg",		{ &parseDirectiveMsg,	0 } },
+	{ ".definearmlabel",	{ &parseDirectiveDefineArmLabel,	0 } },
+	{ ".definethumblabel",	{ &parseDirectiveDefineThumbLabel,	0 } },
+};
+
+std::unique_ptr<CAssemblerCommand> ArmParser::parseDirective(Parser& parser)
+{
+	return parser.parseDirective(armDirectives);
+}
+
+bool ArmParser::parseRegisterTable(Parser& parser, ArmRegisterValue& dest, const ArmRegisterDescriptor* table, size_t count)
+{
+	const Token& token = parser.peekToken();
+	if (token.type != TokenType::Identifier)
+		return false;
+
+	const Identifier &identifier = token.identifierValue();
+	for (size_t i = 0; i < count; i++)
+	{
+		if (identifier == table[i].name)
+		{
+			dest.name = identifier;
+			dest.num = table[i].num;
+			parser.eatToken();
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool ArmParser::parseRegister(Parser& parser, ArmRegisterValue& dest, int max)
+{
+	if (!parseRegisterTable(parser,dest,armRegisters, std::size(armRegisters)))
+		return false;
+
+	return dest.num <= max;
+}
+
+bool ArmParser::parseCopRegister(Parser& parser, ArmRegisterValue& dest)
+{
+	return parseRegisterTable(parser,dest,armCopRegisters, std::size(armCopRegisters));
+}
+
+bool ArmParser::parseCopNumber(Parser& parser, ArmRegisterValue& dest)
+{
+	return parseRegisterTable(parser,dest,armCopNumbers, std::size(armCopNumbers));
+}
+
+bool ArmParser::parseRegisterList(Parser& parser, int& dest, int validMask)
+{
+	ArmRegisterValue reg, reg2;
+
+	dest = 0;
+	while (true)
+	{
+		if (!parseRegister(parser,reg))
+			return false;
+
+		if (parser.peekToken().type == TokenType::Minus)
+		{
+			parser.eatToken();
+
+			if (!parseRegister(parser,reg2) || reg2.num < reg.num)
+				return false;
+
+			for (int i = reg.num; i <= reg2.num; i++)
+			{
+				dest |= (1 << i);
+			}
+		} else {
+			dest |= (1 << reg.num);
+		}
+
+		if (parser.peekToken().type != TokenType::Comma)
+			break;
+
+		parser.eatToken();
+	}
+
+	return (validMask & dest) == dest;
+}
+
+bool ArmParser::parseImmediate(Parser& parser, Expression& dest)
+{
+	TokenizerPosition pos = parser.getTokenizer()->getPosition();
+
+	// check if it really is an immediate
+	ArmOpcodeVariables tempVars;
+	if (parsePsrTransfer(parser,tempVars,false))
+		return false;
+
+	parser.getTokenizer()->setPosition(pos);
+	if (parseRegister(parser,tempVars.rd))
+		return false;
+
+	parser.getTokenizer()->setPosition(pos);
+	if (parseCopNumber(parser,tempVars.rd))
+		return false;
+
+	parser.getTokenizer()->setPosition(pos);
+	if (parseCopRegister(parser,tempVars.rd))
+		return false;
+
+	parser.getTokenizer()->setPosition(pos);
+	dest = parser.parseExpression();
+	return dest.isLoaded();
+}
+
+bool ArmParser::matchSymbol(Parser& parser, char symbol, bool optional)
+{
+	switch (symbol)
+	{
+	case '[':
+		return parser.matchToken(TokenType::LBrack,optional);
+	case ']':
+		return parser.matchToken(TokenType::RBrack,optional);
+	case ',':
+		return parser.matchToken(TokenType::Comma,optional);
+	case '!':
+		return parser.matchToken(TokenType::Exclamation,optional);
+	case '{':
+		return parser.matchToken(TokenType::LBrace,optional);
+	case '}':
+		return parser.matchToken(TokenType::RBrace,optional);
+	case '#':
+		return parser.matchToken(TokenType::Hash,optional);
+	case '=':
+		return parser.matchToken(TokenType::Assign,optional);
+	case '+':
+		return parser.matchToken(TokenType::Plus,optional);
+	}
+
+	return false;
+}
+
+inline bool isNumber(char value)
+{
+	return (value >= '0' && value <= '9');
+}
+
+bool ArmParser::parseShift(Parser& parser, ArmOpcodeVariables& vars, bool immediateOnly)
+{
+	// no shift is also valid
+	vars.Shift.UseShift = false;
+	if (parser.peekToken().type != TokenType::Comma)
+		return true;
+
+	parser.eatToken();
+
+	// load shift mode
+	const Token& shiftMode = parser.nextToken();
+	if (shiftMode.type != TokenType::Identifier)
+		return false;
+
+	std::string stringValue = shiftMode.identifierValue().string();
+
+	bool hasNumber = isNumber(stringValue.back());
+	int64_t number = 0;
+
+	// handle modeXX syntax
+	if (hasNumber)
+	{
+		int64_t multiplier = 1;
+		while (isNumber(stringValue.back()))
+		{
+			number += multiplier*(stringValue.back() - '0');
+			multiplier *= 10;
+			stringValue.pop_back();
+		}
+	}
+
+	if (stringValue == "lsl" || stringValue == "asl")
+		vars.Shift.Type = 0;
+	else if (stringValue == "lsr")
+		vars.Shift.Type = 1;
+	else if (stringValue == "asr")
+		vars.Shift.Type = 2;
+	else if (stringValue == "ror")
+		vars.Shift.Type = 3;
+	else if (stringValue == "rrx")
+		vars.Shift.Type = 4;
+	else
+		return false;
+
+	if (hasNumber)
+	{
+		vars.Shift.ShiftExpression = createConstExpression(number);
+		vars.Shift.ShiftByRegister = false;
+	} else if (parseRegister(parser,vars.Shift.reg))
+	{
+		if (immediateOnly)
+			return false;
+
+		vars.Shift.ShiftByRegister = true;
+	} else {
+		if (parser.peekToken().type == TokenType::Hash)
+			parser.eatToken();
+
+		if (!parseImmediate(parser,vars.Shift.ShiftExpression))
+			return false;
+
+		vars.Shift.ShiftByRegister = false;
+	}
+
+	vars.Shift.UseShift = true;
+	return true;
+}
+
+bool ArmParser::parsePseudoShift(Parser& parser, ArmOpcodeVariables& vars, int type)
+{
+	vars.Shift.Type = type;
+
+	if (parseRegister(parser,vars.Shift.reg))
+	{
+		vars.Shift.ShiftByRegister = true;
+	} else {
+		if (parser.peekToken().type == TokenType::Hash)
+			parser.eatToken();
+
+		if (!parseImmediate(parser,vars.Shift.ShiftExpression))
+			return false;
+
+		vars.Shift.ShiftByRegister = false;
+	}
+
+	vars.Shift.UseShift = true;
+	return true;
+}
+
+int ArmParser::decodeCondition(const std::string& text, size_t& pos)
+{
+	if (pos+2 <= text.size())
+	{
+		char c1 = text[pos+0];
+		char c2 = text[pos+1];
+		pos += 2;
+
+		if (c1 == 'e' && c2 == 'q') return 0;
+		if (c1 == 'n' && c2 == 'e') return 1;
+		if (c1 == 'c' && c2 == 's') return 2;
+		if (c1 == 'h' && c2 == 's') return 2;
+		if (c1 == 'c' && c2 == 'c') return 3;
+		if (c1 == 'l' && c2 == 'o') return 3;
+		if (c1 == 'm' && c2 == 'i') return 4;
+		if (c1 == 'p' && c2 == 'l') return 5;
+		if (c1 == 'v' && c2 == 's') return 6;
+		if (c1 == 'v' && c2 == 'c') return 7;
+		if (c1 == 'h' && c2 == 'i') return 8;
+		if (c1 == 'l' && c2 == 's') return 9;
+		if (c1 == 'g' && c2 == 'e') return 10;
+		if (c1 == 'l' && c2 == 't') return 11;
+		if (c1 == 'g' && c2 == 't') return 12;
+		if (c1 == 'l' && c2 == 'e') return 13;
+		if (c1 == 'a' && c2 == 'l') return 14;
+
+		pos -= 2;
+	}
+
+	return 14;
+}
+
+bool ArmParser::decodeAddressingMode(const std::string& text, size_t& pos, unsigned char& dest)
+{
+	if (pos+2 > text.size())
+		return false;
+
+	char c1 = text[pos+0];
+	char c2 = text[pos+1];
+
+	if      (c1 == 'i' && c2 == 'b') dest = ARM_AMODE_IB;
+	else if (c1 == 'i' && c2 == 'a') dest = ARM_AMODE_IA;
+	else if (c1 == 'd' && c2 == 'b') dest = ARM_AMODE_DB;
+	else if (c1 == 'd' && c2 == 'a') dest = ARM_AMODE_DA;
+	else if (c1 == 'e' && c2 == 'd') dest = ARM_AMODE_ED;
+	else if (c1 == 'f' && c2 == 'd') dest = ARM_AMODE_FD;
+	else if (c1 == 'e' && c2 == 'a') dest = ARM_AMODE_EA;
+	else if (c1 == 'f' && c2 == 'a') dest = ARM_AMODE_FA;
+	else
+		return false;
+
+	pos += 2;
+	return true;
+}
+
+bool ArmParser::decodeXY(const std::string& text, size_t& pos, bool& dest)
+{
+	if (pos >= text.size())
+		return false;
+
+	if (text[pos] == 't')
+		dest = true;
+	else if (text[pos] == 'b')
+		dest = false;
+	else
+		return false;
+
+	pos++;
+	return true;
+}
+
+void ArmParser::decodeS(const std::string& text, size_t& pos, bool& dest)
+{
+	dest = pos < text.size() && text[pos] == 's';
+	if (dest)
+		pos++;
+}
+
+bool ArmParser::decodeArmOpcode(const std::string& name, const tArmOpcode& opcode, ArmOpcodeVariables& vars)
+{
+	vars.Opcode.c = vars.Opcode.a = 0;
+	vars.Opcode.s = false;
+
+	const char* encoding = opcode.name;
+	size_t pos = 0;
+
+	while (*encoding != 0)
+	{
+		switch (*encoding++)
+		{
+		case 'C':	// condition
+			vars.Opcode.c = decodeCondition(name,pos);
+			break;
+		case 'S':	// set flag
+			decodeS(name,pos,vars.Opcode.s);
+			break;
+		case 'A':	// addressing mode
+			CHECK(decodeAddressingMode(name,pos,vars.Opcode.a));
+			break;
+		case 'X':	// x flag
+			CHECK(decodeXY(name,pos,vars.Opcode.x));
+			break;
+		case 'Y':	// y flag
+			CHECK(decodeXY(name,pos,vars.Opcode.y));
+			break;
+		default:
+			CHECK(pos < name.size());
+			CHECK(*(encoding-1) == name[pos++]);
+			break;
+		}
+	}
+
+	return pos >= name.size();
+}
+
+void ArmParser::parseWriteback(Parser& parser, bool& dest)
+{
+	dest = parser.peekToken().type == TokenType::Exclamation;
+	if (dest)
+		parser.eatToken();
+}
+
+void ArmParser::parsePsr(Parser& parser, bool& dest)
+{
+	dest = parser.peekToken().type == TokenType::Caret;
+	if (dest)
+		parser.eatToken();
+}
+
+void ArmParser::parseSign(Parser& parser, bool& dest)
+{
+	switch (parser.peekToken().type)
+	{
+	case TokenType::Plus:
+		dest = true;
+		parser.eatToken();
+		break;
+	case TokenType::Minus:
+		dest = false;
+		parser.eatToken();
+		break;
+	default:
+		dest = true;
+		break;
+	}
+}
+
+bool ArmParser::parsePsrTransfer(Parser& parser, ArmOpcodeVariables& vars, bool shortVersion)
+{
+	const Token& token = parser.nextToken();
+	if (token.type != TokenType::Identifier)
+		return false;
+
+	const std::string &stringValue = token.identifierValue().string();
+	size_t pos = 0;
+	if (startsWith(stringValue,"cpsr"))
+	{
+		vars.PsrData.spsr = false;
+		pos = 4;
+	} else if (startsWith(stringValue,"spsr"))
+	{
+		vars.PsrData.spsr = true;
+		pos = 4;
+	} else {
+		return false;
+	}
+
+	if (shortVersion)
+		return pos == stringValue.size();
+
+	if (pos == stringValue.size())
+	{
+		vars.PsrData.field = 0xF;
+		return true;
+	}
+
+	if (stringValue[pos++] != '_')
+		return false;
+
+	if (startsWith(stringValue,"ctl",pos))
+	{
+		vars.PsrData.field = 1;
+		return pos+3 == stringValue.size();
+	}
+
+	if (startsWith(stringValue,"flg",pos))
+	{
+		vars.PsrData.field = 8;
+		return pos+3 == stringValue.size();
+	}
+
+	vars.PsrData.field = 0;
+	for (int i = 0; i < 4; i++)
+	{
+		if (pos == stringValue.size())
+			break;
+
+		switch(stringValue[pos++])
+		{
+		case 'f':
+			if (vars.PsrData.field & 8)
+				return false;	// can only appear once
+			vars.PsrData.field |= 8;
+			break;
+		case 's':
+			if (vars.PsrData.field & 4)
+				return false;	// can only appear once
+			vars.PsrData.field |= 4;
+			break;
+		case 'x':
+			if (vars.PsrData.field & 2)
+				return false;	// can only appear once
+			vars.PsrData.field |= 2;
+			break;
+		case 'c':
+			if (vars.PsrData.field & 1)
+				return false;	// can only appear once
+			vars.PsrData.field |= 1;
+			break;
+		default:
+			return false;	// has to be one of those
+		}
+	}
+
+	return true;
+}
+
+bool ArmParser::parseArmParameters(Parser& parser, const tArmOpcode& opcode, ArmOpcodeVariables& vars)
+{
+	const char* encoding = opcode.mask;
+
+	ArmRegisterValue tempRegister;
+
+	vars.Shift.UseShift = false;
+	vars.Shift.UseFinal = false;
+	vars.psr = false;
+	vars.writeback = false;
+	vars.SignPlus = false;
+	vars.Opcode.UseNewEncoding = false;
+	vars.Opcode.UseNewType = false;
+
+	while (*encoding != 0)
+	{
+		bool optional = *encoding == '/';
+		if (optional)
+			encoding++;
+
+		switch (*encoding++)
+		{
+		case 'd': // register
+			CHECK(parseRegister(parser,vars.rd,*encoding++ == '1' ? 14 : 15));
+			break;
+		case 's': // register
+			CHECK(parseRegister(parser,vars.rs,*encoding++ == '1' ? 14 : 15));
+			break;
+		case 'n': // register
+			CHECK(parseRegister(parser,vars.rn,*encoding++ == '1' ? 14 : 15));
+			break;
+		case 'm': // register
+			CHECK(parseRegister(parser,vars.rm,*encoding++ == '1' ? 14 : 15));
+			break;
+		case 'D': // cop register
+			CHECK(parseCopRegister(parser,vars.CopData.cd));
+			break;
+		case 'N': // cop register
+			CHECK(parseCopRegister(parser,vars.CopData.cn));
+			break;
+		case 'M': // cop register
+			CHECK(parseCopRegister(parser,vars.CopData.cm));
+			break;
+		case 'W':	// writeback
+			parseWriteback(parser,vars.writeback);
+			break;
+		case 'p':	// psr
+			parsePsr(parser,vars.psr);
+			break;
+		case 'P':	// msr/mrs psr data
+			CHECK(parsePsrTransfer(parser,vars,*encoding++ == '1'));
+			break;
+		case 'R':	// register list
+			CHECK(parseRegisterList(parser,vars.rlist,0xFFFF));
+			break;
+		case 'S':	// shift
+			CHECK(parseShift(parser,vars,*encoding++ == '1'));
+			break;
+		case 'I':	// immediate
+		case 'i':
+			CHECK(parseImmediate(parser,vars.ImmediateExpression));
+			vars.ImmediateBitLen = 32;
+			break;
+		case 'j':	// variable bit immediate
+			CHECK(parseImmediate(parser,vars.ImmediateExpression));
+			vars.ImmediateBitLen = *encoding++;
+			break;
+		case 'X': // cop number
+			CHECK(parseCopNumber(parser,vars.CopData.pn));
+			break;
+		case 'Y':	// cop opcode number
+			CHECK(parseImmediate(parser,vars.CopData.CpopExpression));
+			vars.ImmediateBitLen = 4;
+			break;
+		case 'Z':	// cop info number
+			CHECK(parseImmediate(parser,vars.CopData.CpinfExpression));
+			vars.ImmediateBitLen = 3;
+			break;
+		case 'z':	// shift for pseudo opcodes
+			CHECK(parsePseudoShift(parser,vars,*encoding++));
+			break;
+		case 'v':	// sign for register index parameter
+			parseSign(parser,vars.SignPlus);
+			break;
+		default:
+			CHECK(matchSymbol(parser,*(encoding-1),optional));
+			break;
+		}
+	}
+
+	// the next token has to be a separator, else the parameters aren't
+	// completely parsed
+	return parser.nextToken().type == TokenType::Separator;
+}
+
+std::unique_ptr<CArmInstruction> ArmParser::parseArmOpcode(Parser& parser)
+{
+	if (parser.peekToken().type != TokenType::Identifier)
+		return nullptr;
+
+	const Token &token = parser.nextToken();
+
+	ArmOpcodeVariables vars;
+	bool paramFail = false;
+
+	const Identifier &identifier = token.identifierValue();
+	for (int z = 0; ArmOpcodes[z].name != nullptr; z++)
+	{
+		if ((ArmOpcodes[z].flags & ARM_ARM9) && Arm.getVersion() == AARCH_GBA)
+			continue;
+
+		if (decodeArmOpcode(identifier.string(),ArmOpcodes[z],vars))
+		{
+			TokenizerPosition tokenPos = parser.getTokenizer()->getPosition();
+
+			if (parseArmParameters(parser,ArmOpcodes[z],vars))
+			{
+				// success, return opcode
+				return std::make_unique<CArmInstruction>(ArmOpcodes[z],vars);
+			}
+
+			parser.getTokenizer()->setPosition(tokenPos);
+			paramFail = true;
+		}
+	}
+
+	if (paramFail)
+		parser.printError(token, "ARM parameter failure");
+	else
+		parser.printError(token, "Invalid ARM opcode");
+
+	return nullptr;
+}
+
+bool ArmParser::parseThumbParameters(Parser& parser, const tThumbOpcode& opcode, ThumbOpcodeVariables& vars)
+{
+	const char* encoding = opcode.mask;
+
+	ArmRegisterValue tempRegister;
+	int value;
+
+	while (*encoding != 0)
+	{
+		bool optional = *encoding == '/';
+		if (optional)
+			encoding++;
+
+		switch (*encoding++)
+		{
+		case 'd': // register
+			CHECK(parseRegister(parser,vars.rd,7));
+			break;
+		case 's': // register
+			CHECK(parseRegister(parser,vars.rs,7));
+			break;
+		case 'n': // register
+			CHECK(parseRegister(parser,vars.rn,7));
+			break;
+		case 'o': // register
+			CHECK(parseRegister(parser,vars.ro,7));
+			break;
+		case 'D': // register
+			CHECK(parseRegister(parser,vars.rd,15));
+			break;
+		case 'S': // register
+			CHECK(parseRegister(parser,vars.rs,15));
+			break;
+		case 'r': // forced register
+			CHECK(parseRegister(parser,tempRegister,15));
+			CHECK(*encoding++ == tempRegister.num);
+			break;
+		case 'R':	// register list
+			value = encoding[0] | (encoding[1] << 8);
+			CHECK(parseRegisterList(parser,vars.rlist,value));
+			encoding += 2;
+			break;
+		case 'I':	// immediate
+		case 'i':
+			CHECK(parseImmediate(parser,vars.ImmediateExpression));
+			vars.ImmediateBitLen = *encoding++;
+			break;
+		default:
+			CHECK(matchSymbol(parser,*(encoding-1),optional));
+			break;
+		}
+	}
+
+	// the next token has to be a separator, else the parameters aren't
+	// completely parsed
+	return parser.nextToken().type == TokenType::Separator;
+}
+
+std::unique_ptr<CThumbInstruction> ArmParser::parseThumbOpcode(Parser& parser)
+{
+	if (parser.peekToken().type != TokenType::Identifier)
+		return nullptr;
+
+	const Token &token = parser.nextToken();
+
+	ThumbOpcodeVariables vars;
+	bool paramFail = false;
+
+	const Identifier &identifier = token.identifierValue();
+	for (int z = 0; ThumbOpcodes[z].name != nullptr; z++)
+	{
+		if ((ThumbOpcodes[z].flags & THUMB_ARM9) && Arm.getVersion() == AARCH_GBA)
+			continue;
+
+		if (identifier == ThumbOpcodes[z].name)
+		{
+			TokenizerPosition tokenPos = parser.getTokenizer()->getPosition();
+
+			if (parseThumbParameters(parser,ThumbOpcodes[z],vars))
+			{
+				// success, return opcode
+				return std::make_unique<CThumbInstruction>(ThumbOpcodes[z],vars);
+			}
+
+			parser.getTokenizer()->setPosition(tokenPos);
+			paramFail = true;
+		}
+	}
+
+	if (paramFail)
+		parser.printError(token, "THUMB parameter failure in %S",identifier);
+	else
+		parser.printError(token, "Invalid THUMB opcode: %S",identifier);
+
+	return nullptr;
+}
+
+// file: Commands/CAssemblerLabel.cpp
+
+
+CAssemblerLabel::CAssemblerLabel(const Identifier& name, const Identifier& originalName, std::optional<bool> thumbMode)
+{
+	this->defined = false;
+	this->label = nullptr;
+
+	if (!Global.symbolTable.isLocalSymbol(name))
+		updateSection(++Global.Section);
+
+	label = Global.symbolTable.getLabel(name, FileNum, getSection());
+	if (label == nullptr)
+	{
+		Logger::printError(Logger::Error, "Invalid label name \"%s\"", name);
+		return;
+	}
+
+	label->setOriginalName(originalName);
+
+	// does this need to be in validate?
+	if (label->getUpdateInfo())
+	{
+		if (&Architecture::current() != &Arm)
+			label->setInfo(0);
+		else
+			label->setInfo(thumbMode.value_or(Arm.GetThumbMode()));
+	}
+}
+
+CAssemblerLabel::CAssemblerLabel(const Identifier& name, const Identifier& originalName, Expression& value, std::optional<bool> thumbMode)
+	: CAssemblerLabel(name,originalName,thumbMode)
+{
+	labelValue = value;
+}
+
+bool CAssemblerLabel::Validate(const ValidateState &state)
+{
+	bool result = false;
+	if (!defined)
+	{
+		if (label->isDefined())
+		{
+			Logger::queueError(Logger::Error, "Label \"%s\" already defined", label->getName());
+			return false;
+		}
+
+		label->setDefined(true);
+		defined = true;
+		result = true;
+	}
+
+	bool hasPhysicalValue = false;
+	int64_t virtualValue = 0;
+	int64_t physicalValue = 0;
+
+	if (labelValue.isLoaded())
+	{
+		// label value is given by expression
+		if (!labelValue.evaluateInteger(virtualValue))
+		{
+			Logger::printError(Logger::Error, "Invalid expression");
+			return result;
+		}
+	} else {
+		// label value is given by current address
+		virtualValue = g_fileManager->getVirtualAddress();
+		physicalValue = g_fileManager->getPhysicalAddress();
+		hasPhysicalValue = true;
+	}
+
+	if (label->getValue() != virtualValue)
+	{
+		label->setValue(virtualValue);
+		result = true;
+	}
+
+	if (hasPhysicalValue && (!label->hasPhysicalValue() || physicalValue != label->getPhysicalValue()))
+	{
+		label->setPhysicalValue(physicalValue);
+		result = true;
+	}
+
+	return result;
+}
+
+void CAssemblerLabel::Encode() const
+{
+
+}
+
+void CAssemblerLabel::writeTempData(TempData& tempData) const
+{
+	if (!Global.symbolTable.isGeneratedLabel(label->getName()))
+		tempData.writeLine(label->getValue(),tfm::format("%s:",label->getName()));
+}
+
+void CAssemblerLabel::writeSymData(SymbolData& symData) const
+{
+	// TODO: find a less ugly way to check for undefined memory positions
+	if (label->getValue() == -1 || Global.symbolTable.isGeneratedLabel(label->getName()))
+		return;
+
+	symData.addLabel(label->getValue(),label->getOriginalName().string());
+}
+
+
+
+
+CDirectiveFunction::CDirectiveFunction(const Identifier& name, const Identifier& originalName)
+{
+	this->label = std::make_unique<CAssemblerLabel>(name,originalName);
+	this->content = nullptr;
+	this->start = this->end = 0;
+}
+
+bool CDirectiveFunction::Validate(const ValidateState &state)
+{
+	start = g_fileManager->getVirtualAddress();
+
+	label->applyFileInfo();
+	bool result = label->Validate(state);
+
+	ValidateState contentValidation = state;
+	contentValidation.noFileChange = true;
+	contentValidation.noFileChangeDirective = "function";
+	content->applyFileInfo();
+	if (content->Validate(contentValidation))
+		result = true;
+
+	end = g_fileManager->getVirtualAddress();
+	return result;
+}
+
+void CDirectiveFunction::Encode() const
+{
+	label->Encode();
+	content->Encode();
+}
+
+void CDirectiveFunction::writeTempData(TempData& tempData) const
+{
+	label->writeTempData(tempData);
+	content->applyFileInfo();
+	content->writeTempData(tempData);
+}
+
+void CDirectiveFunction::writeSymData(SymbolData& symData) const
+{
+	symData.startFunction(start);
+	label->writeSymData(symData);
+	content->writeSymData(symData);
+	symData.endFunction(end);
+}
+
 // file: Archs/MIPS/Mips.h
+
+
+class Expression;
 
 enum MipsArchType { MARCH_PSX = 0, MARCH_N64, MARCH_PS2, MARCH_PSP, MARCH_RSP, MARCH_INVALID };
 
-class CMipsArchitecture: public CArchitecture
+class CMipsArchitecture: public Architecture
 {
 public:
 	CMipsArchitecture();
 	virtual std::unique_ptr<CAssemblerCommand> parseDirective(Parser& parser);
 	virtual std::unique_ptr<CAssemblerCommand> parseOpcode(Parser& parser);
-	virtual const ExpressionFunctionMap& getExpressionFunctions();
+	virtual void registerExpressionFunctions(ExpressionFunctionHandler &handler);
 	virtual void NextSection();
 	virtual void Pass2() { return; };
 	virtual void Revalidate();
@@ -2484,6 +7215,7 @@ public:
 	{
 		return Version == MARCH_N64 || Version == MARCH_RSP ? Endianness::Big : Endianness::Little;
 	};
+	virtual int getWordSize() { return 4; };
 	void SetLoadDelay(bool Delay, int Register);
 	bool GetLoadDelay() { return LoadDelay; };
 	int GetLoadDelayRegister() { return LoadDelayRegister; };
@@ -2536,51 +7268,309 @@ int MipsGetFloatRegister(const char* source, int& RetLen);
 bool MipsCheckImmediate(const char* Source, Expression& Dest, int& RetLen);
 
 
+// file: Archs/SuperH/ShOpcodes.h
+
+#include <cstdint>
+
+#define SH_SUPERH1 (1 << 0)
+#define SH_SUPERH2 (1 << 1)
+
+#define SH_IMM16 	   (1 << 0)
+#define SH_IMM32 	   (1 << 1)
+#define SH_IMMREL      (1 << 2)
+#define SH_FREG		   (1 << 3)
+#define SH_IMMSIGNED   (1 << 4)
+#define SH_DELAYED	   (1 << 5)
+#define SH_PCRELMANUAL (1 << 6)
+
+#define SH_MUSTBEALIGNED (SH_IMM16 | SH_IMM32)
+
+enum ShInstructionFormat
+{
+	// x - op code
+	// m - source
+	// n - dest
+	// i - immediate data
+	// d - displacement
+	             // 15                0
+	SHFMT_0 = 0, // xxxx xxxx xxxx xxxx
+	SHFMT_N,     // xxxx nnnn xxxx xxxx
+	SHFMT_M,     // xxxx mmmm xxxx xxxx
+	SHFMT_NM,    // xxxx nnnn mmmm xxxx
+	SHFMT_MD,    // xxxx xxxx mmmm dddd
+	SHFMT_ND4,   // xxxx xxxx nnnn dddd
+	SHFMT_NMD,   // xxxx nnnn mmmm dddd
+	SHFMT_D,     // xxxx xxxx dddd dddd
+	SHFMT_D12,   // xxxx dddd dddd dddd
+	SHFMT_ND8,   // xxxx nnnn dddd dddd
+	SHFMT_I,     // xxxx xxxx iiii iiii
+	SHFMT_NI,    // xxxx nnnn iiii iiii
+	SHFMT_INVALID
+};
+
+struct ShArchDefinition
+{
+	const char* name;
+	int supportSets;
+	int excludeMask;
+	int flags;
+};
+
+extern const ShArchDefinition shArchs[];
+
+struct tShOpcode
+{
+	const char* name;
+	const char* encoding;
+	uint16_t base;
+	int format;
+	int archs;
+	int flags;
+};
+
+extern const tShOpcode shOpcodes[];
+
+// file: Archs/SuperH/SuperH.h
+
+
+enum ShArchType { SHARCH_SATURN = 0, SHARCH_LITTLE, SHARCH_BIG, SHARCH_INVALID };
+
+class CShArchitecture: public Architecture
+{
+public:
+	CShArchitecture();
+
+	virtual std::unique_ptr<CAssemblerCommand> parseDirective(Parser& parser);
+	virtual std::unique_ptr<CAssemblerCommand> parseOpcode(Parser& parser);
+	virtual void registerExpressionFunctions(ExpressionFunctionHandler &handler);
+	virtual void NextSection();
+	virtual void Pass2() { return; }
+	virtual void Revalidate();
+	virtual std::unique_ptr<IElfRelocator> getElfRelocator();
+	virtual Endianness getEndianness() { return version == SHARCH_LITTLE ? Endianness::Little : Endianness::Big; };
+	virtual int getWordSize() { return 2; };
+	void setVersion(ShArchType type) { version = type; }
+	ShArchType getVersion() { return version; }
+
+private:
+	ShArchType version;
+};
+
+extern CShArchitecture SuperH;
+
+
+// file: Archs/SuperH/CShInstruction.h
+
+
+enum class ShRegisterType
+{
+	Normal,
+};
+
+enum class ShImmediateType
+{
+	None,
+	Immediate4,
+	Immediate8,
+	Immediate12,
+};
+
+struct ShRegisterValue
+{
+	ShRegisterType type;
+	Identifier name{};
+	int num;
+};
+
+struct ShRegisterData {
+	ShRegisterValue grs;			// general source reg
+	ShRegisterValue grt;			// general target reg
+
+	void reset()
+	{
+		grs.num = grt.num = -1;
+	}
+};
+
+struct ShImmediateData
+{
+	struct
+	{
+		ShImmediateType type;
+		Expression expression;
+		int value;
+		int originalValue;
+	} primary;
+
+	void reset()
+	{
+		primary.type = ShImmediateType::None;
+		if (primary.expression.isLoaded())
+			primary.expression = Expression();
+	}
+};
+
+struct ShOpcodeData
+{
+	tShOpcode opcode;
+
+	void reset()
+	{
+	}
+};
+
+class CShInstruction: public CAssemblerCommand
+{
+public:
+	CShInstruction(ShOpcodeData& opcode, ShImmediateData& immediate, ShRegisterData& registers);
+	~CShInstruction();
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+private:
+	int64_t RamPos;
+
+	int getImmediateBits(ShImmediateType type);
+
+	// opcode variables
+	ShOpcodeData opcodeData;
+	ShImmediateData immediateData;
+	ShRegisterData registerData;
+};
+
+// file: Archs/SuperH/ShParser.h
+
+
+#include <memory>
+#include <string>
+
+class CAssemblerCommand;
+class Expression;
+class Parser;
+struct tShOpcode;
+
+struct ShRegisterDescriptor {
+	const char* name;
+	int num;
+};
+
+class ShParser
+{
+public:
+	std::unique_ptr<CAssemblerCommand> parseDirective(Parser& parser);
+	std::unique_ptr<CShInstruction> parseOpcode(Parser& parser);
+private:
+	bool parseRegisterTable(Parser& parser, ShRegisterValue& dest, const ShRegisterDescriptor* table, size_t count);
+	bool parseRegister(Parser& parser, ShRegisterValue& dest);
+	bool parseImmediate(Parser& parser, Expression& dest);
+
+	bool decodeOpcode(Parser& parser, const tShOpcode& opcode);
+
+	void setOmittedRegisters(const tShOpcode& opcode);
+	bool matchSymbol(Parser& parser, char symbol);
+	bool parseParameters(Parser& parser, const tShOpcode& opcode);
+
+	ShRegisterData registers;
+	ShImmediateData immediate;
+	ShOpcodeData opcodeData;
+};
+
+class ShOpcodeFormatter
+{
+public:
+	const std::string& formatOpcode(const ShOpcodeData& opData, const ShRegisterData& regData,
+		const ShImmediateData& immData);
+private:
+	void handleOpcodeName(const ShOpcodeData& opData);
+	void handleOpcodeParameters(const ShOpcodeData& opData, const ShRegisterData& regData,
+		const ShImmediateData& immData);
+	void handleImmediate(ShImmediateType type, unsigned int originalValue, unsigned int opcodeFlags);
+
+	std::string buffer;
+};
+
+// file: Archs/SuperH/ShElfRelocator.h
+
+enum {
+	R_SH_NONE,
+	R_SH_DIR32,
+	R_SH_REL32,
+	R_SH_DIR8WPN,
+	R_SH_IND12W,
+	R_SH_DIR8WPL,
+	R_SH_DIR8WPZ,
+	R_SH_DIR8BP,
+	R_SH_DIR8W,
+	R_SH_DIR8L
+};
+
+class ShElfRelocator: public IElfRelocator
+{
+public:
+	int expectedMachine() const override;
+	bool relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors) override;
+	bool finish(std::vector<RelocationAction>& actions, std::vector<std::string>& errors) override;
+	void setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType) override;
+	std::unique_ptr<CAssemblerCommand> generateCtorStub(std::vector<ElfRelocatorCtor>& ctors) override;
+private:
+};
+
+// file: Archs/SuperH/ShExpressionFunctions.h
+
+class ExpressionFunctionHandler;
+
+void registerShExpressionFunctions(ExpressionFunctionHandler &handler);
+
 // file: Archs/MIPS/MipsOpcodes.h
 
-#define MA_MIPS1		0x00000001
-#define MA_MIPS2		0x00000002
-#define MA_MIPS3		0x00000004
-#define MA_MIPS4		0x00000008
-#define MA_PSX			0x00000010
-#define MA_PS2			0x00000040
-#define MA_PSP			0x00000080
-#define MA_RSP			0x00000100
+#include <cstdint>
 
-#define MA_EXPSX		0x00001000
-#define MA_EXN64		0x00002000
-#define MA_EXPS2		0x00004000
-#define MA_EXPSP		0x00008000
-#define MA_EXRSP		0x00010000
+#define MA_MIPS1		(1 << 0)
+#define MA_MIPS2		(1 << 1)
+#define MA_MIPS3		(1 << 2)
+#define MA_MIPS4		(1 << 3)
+#define MA_PSX			(1 << 4)
+#define MA_PS2			(1 << 6)
+#define MA_PSP			(1 << 7)
+#define MA_RSP			(1 << 8)
 
-#define MO_IPCA			0x00000001	// pc >> 2
-#define MO_IPCR			0x00000002	// PC, -> difference >> 2
-#define MO_RSD			0x00000004	// rs = rd
-#define MO_RST			0x00000008	// rs = rt
-#define MO_RDT			0x00000010	// rd = rt
-#define MO_DELAY		0x00000020	// delay slot follows
-#define MO_NODELAYSLOT	0x00000040	// can't be in a delay slot
-#define MO_DELAYRT		0x00000080	// rt won't be available for one instruction
-#define MO_IGNORERTD	0x00000100	// don't care for rt delay
-#define MO_FRSD			0x00000200	// float rs + rd
-#define MO_IMMALIGNED	0x00000400	// immediate 4 byte aligned
-#define MO_VFPU_MIXED	0x00000800	// mixed mode vfpu register
-#define MO_VFPU_6BIT	0x00001000	// vfpu register can have 6 bits max
-#define MO_VFPU_SINGLE	0x00002000	// single vfpu reg
-#define MO_VFPU_QUAD	0x00004000	// quad vfpu reg
-#define MO_VFPU			0x00008000	// vfpu type opcode
-#define MO_64BIT		0x00010000	// only available on 64 bit cpus
-#define MO_FPU			0x00020000	// only available with an fpu
-#define MO_TRANSPOSE_VS	0x00040000	// matrix vs has to be transposed
-#define MO_VFPU_PAIR	0x00080000	// pair vfpu reg
-#define MO_VFPU_TRIPLE	0x00100000	// triple vfpu reg
-#define MO_DFPU			0x00200000	// double-precision fpu opcodes
-#define MO_RSPVRSD		0x00400000	// rsp vector rs + rd
-#define MO_NEGIMM		0x00800000 	// negated immediate (for subi)
-#define MO_RSP_HWOFFSET	0x01000000	// RSP halfword load/store offset
-#define MO_RSP_WOFFSET	0x02000000	// RSP word load/store offset
-#define MO_RSP_DWOFFSET	0x04000000	// RSP doubleword load/store offset
-#define MO_RSP_QWOFFSET	0x08000000	// RSP quadword load/store offset
+#define MA_EXPSX		(1 << 12)
+#define MA_EXN64		(1 << 13)
+#define MA_EXPS2		(1 << 14)
+#define MA_EXPSP		(1 << 15)
+#define MA_EXRSP		(1 << 16)
+
+#define MO_IPCA							(1 << 0)	// pc >> 2
+#define MO_IPCR							(1 << 1)	// PC, -> difference >> 2
+#define MO_RSD							(1 << 2)	// rs = rd
+#define MO_RST							(1 << 3)	// rs = rt
+#define MO_RDT							(1 << 4)	// rd = rt
+#define MO_DELAY						(1 << 5)	// delay slot follows
+#define MO_NODELAYSLOT					(1 << 6)	// can't be in a delay slot
+#define MO_DELAYRT						(1 << 7)	// rt won't be available for one instruction
+#define MO_IGNORERTD					(1 << 8)	// don't care for rt delay
+#define MO_FRSD							(1 << 9)	// float rs + rd
+#define MO_IMMALIGNED					(1 << 10)	// immediate 4 byte aligned
+#define MO_NEGIMM						(1 << 11)	// negated immediate (for subi)
+#define MO_64BIT						(1 << 12)	// only available on 64 bit cpus
+#define MO_FPU							(1 << 13)	// only available with an fpu
+#define MO_DFPU							(1 << 14)	// double-precision fpu opcodes
+
+#define MO_VFPU							(1 << 16)	// vfpu type opcode
+#define MO_VFPU_MIXED					(1 << 17)	// mixed mode vfpu register
+#define MO_VFPU_6BIT					(1 << 18)	// vfpu register can have 6 bits max
+#define MO_VFPU_SINGLE					(1 << 19)	// single vfpu reg
+#define MO_VFPU_QUAD					(1 << 20)	// quad vfpu reg
+#define MO_VFPU_TRANSPOSE_VS			(1 << 21)	// matrix vs has to be transposed
+#define MO_VFPU_PAIR					(1 << 22)	// pair vfpu reg
+#define MO_VFPU_TRIPLE					(1 << 23)	// triple vfpu reg
+
+#define MO_RSP_VRSD						(1 << 24)	// rsp vector rs + rd
+#define MO_RSP_HWOFFSET					(1 << 25) // RSP halfword load/store offset
+#define MO_RSP_WOFFSET					(1 << 26) // RSP word load/store offset
+#define MO_RSP_DWOFFSET					(1 << 27)	// RSP doubleword load/store offset
+#define MO_RSP_QWOFFSET					(1 << 28)	// RSP quadword load/store offset
+
 
 #define BITFIELD(START,LENGTH,VALUE)	(((VALUE) & ((1 << (LENGTH)) - 1)) << (START))
 #define MIPS_FUNC(VALUE)				BITFIELD(0,6,(VALUE))
@@ -2643,17 +7633,19 @@ struct MipsArchDefinition
 
 extern const MipsArchDefinition mipsArchs[];
 
-typedef struct {
+struct tMipsOpcode
+{
 	const char* name;
 	const char* encoding;
-	int destencoding;
+	int32_t destencoding;
 	int archs;
 	int flags;
-} tMipsOpcode;
+};
 
 extern const tMipsOpcode MipsOpcodes[];
 
 // file: Archs/MIPS/CMipsInstruction.h
+
 
 enum class MipsRegisterType
 {
@@ -2695,7 +7687,7 @@ enum class MipsImmediateType
 struct MipsRegisterValue
 {
 	MipsRegisterType type;
-	std::wstring name;
+	Identifier name{};
 	int num;
 };
 
@@ -2781,9 +7773,9 @@ class CMipsInstruction: public CAssemblerCommand
 public:
 	CMipsInstruction(MipsOpcodeData& opcode, MipsImmediateData& immediate, MipsRegisterData& registers);
 	~CMipsInstruction();
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
 private:
 	void encodeNormal() const;
 	void encodeVfpu() const;
@@ -2799,711 +7791,111 @@ private:
 	MipsRegisterData registerData;
 };
 
-// file: Util/EncodingTable.h
-#include <map>
+// file: Archs/MIPS/MipsExpressionFunctions.h
 
-class Trie
+class ExpressionFunctionHandler;
+
+void registerMipsExpressionFunctions(ExpressionFunctionHandler &handler);
+
+// file: Archs/MIPS/MipsElfRelocator.h
+
+enum {
+	R_MIPS_NONE,
+	R_MIPS_16,
+	R_MIPS_32,
+	R_MIPS_REL32,
+	R_MIPS_26,
+	R_MIPS_HI16,
+	R_MIPS_LO16,
+	R_MIPS_GPREL16,
+	R_MIPS_LITERAL,
+	R_MIPS_GOT16,
+	R_MIPS_PC16,
+	R_MIPS_CALL16,
+	R_MIPS_GPREL32
+};
+
+class MipsElfRelocator: public IElfRelocator
 {
 public:
-	Trie();
-	void insert(const wchar_t* text, size_t value);
-	void insert(wchar_t character, size_t value);
-	bool findLongestPrefix(const wchar_t* text, size_t& result);
+	int expectedMachine() const override;
+	bool relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors) override;
+	bool finish(std::vector<RelocationAction>& actions, std::vector<std::string>& errors) override;
+	void setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType) override;
+	std::unique_ptr<CAssemblerCommand> generateCtorStub(std::vector<ElfRelocatorCtor>& ctors) override;
 private:
-	struct LookupEntry
-	{
-		size_t node;
-		wchar_t input;
+	bool processHi16Entries(uint32_t lo16Opcode, int64_t lo16RelocationBase, std::vector<RelocationAction>& actions, std::vector<std::string>& errors);
 
-		bool operator<(const LookupEntry& other) const
-		{
-			if (node != other.node)
-				return node < other.node;
-			return input < other.input;
-		}
+	struct Hi16Entry
+	{
+		Hi16Entry(int64_t offset, int64_t relocationBase, uint32_t opcode) : offset(offset), relocationBase(relocationBase), opcode(opcode) {}
+		int64_t offset;
+		int64_t relocationBase;
+		uint32_t opcode;
 	};
 
-	struct Node
-	{
-		size_t index;
-		bool hasValue;
-		size_t value;
-	};
-
-	std::vector<Node> nodes;
-	std::map<LookupEntry,size_t> lookup;
+	std::vector<Hi16Entry> hi16Entries;
 };
 
-class EncodingTable
+// file: Archs/MIPS/MipsElfFile.h
+
+
+class MipsElfFile: public AssemblerFile
 {
 public:
-	EncodingTable();
-	~EncodingTable();
-	void clear();
-	bool load(const std::wstring& fileName, TextFile::Encoding encoding = TextFile::GUESS);
-	bool isLoaded() { return entries.size() != 0; };
-	void addEntry(unsigned char* hex, size_t hexLength, const std::wstring& value);
-	void addEntry(unsigned char* hex, size_t hexLength, wchar_t value);
-	void setTerminationEntry(unsigned char* hex, size_t hexLength);
-	ByteArray encodeString(const std::wstring& str, bool writeTermination = true);
-	ByteArray encodeTermination();
+	MipsElfFile();
+	virtual bool open(bool onlyCheck);
+	virtual void close();
+	virtual bool isOpen() { return opened; };
+	virtual bool write(void* data, size_t length);
+	virtual int64_t getVirtualAddress();
+	virtual int64_t getPhysicalAddress();
+	virtual int64_t getHeaderSize();
+	virtual bool seekVirtual(int64_t virtualAddress);
+	virtual bool seekPhysical(int64_t physicalAddress);
+	virtual bool getModuleInfo(SymDataModuleInfo& info);
+	virtual void beginSymData(SymbolData& symData);
+	virtual void endSymData(SymbolData& symData);
+	virtual const fs::path& getFileName() { return fileName; };
+
+	bool load(const fs::path& fileName, const fs::path& outputFileName);
+	void save();
+	bool setSection(const std::string& name);
 private:
-	struct TableEntry
-	{
-		size_t hexPos;
-		size_t hexLen;
-		size_t valueLen;
-	};
+	ElfFile elf;
+	fs::path fileName;
+	fs::path outputFileName;
+	bool opened;
+	int platform;
 
-	ByteArray hexData;
-	std::vector<TableEntry> entries;
-	Trie lookup;
-	TableEntry terminationEntry;
-};
-
-// file: Core/Misc.h
-#include <vector>
-
-class Logger
-{
-public:
-	enum ErrorType { Warning, Error, FatalError, Notice };
-
-	static void clear();
-	static void printLine(const std::wstring& text);
-	static void printLine(const std::string& text);
-
-	template <typename... Args>
-	static void printLine(const wchar_t* text, const Args&... args)
-	{
-		std::wstring message = formatString(text,args...);
-		printLine(message);
-	}
-
-	static void print(const std::wstring& text);
-
-	template <typename... Args>
-	static void print(const wchar_t* text, const Args&... args)
-	{
-		std::wstring message = formatString(text,args...);
-		print(message);
-	}
-
-	static void printError(ErrorType type, const std::wstring& text);
-	static void printError(ErrorType type, const wchar_t* text);
-	static void queueError(ErrorType type, const std::wstring& text);
-	static void queueError(ErrorType type, const wchar_t* text);
-
-	template <typename... Args>
-	static void printError(ErrorType type, const wchar_t* text, const Args&... args)
-	{
-		std::wstring message = formatString(text,args...);
-		printError(type,message);
-	}
-
-	template <typename... Args>
-	static void queueError(ErrorType type, const wchar_t* text, const Args&... args)
-	{
-		std::wstring message = formatString(text,args...);
-		queueError(type,message);
-	}
-
-	static void printQueue();
-	static void clearQueue() { queue.clear(); };
-	static StringList getErrors() { return errors; };
-	static bool hasError() { return error; };
-	static bool hasFatalError() { return fatalError; };
-	static void setErrorOnWarning(bool b) { errorOnWarning = b; };
-	static void setSilent(bool b) { silent = b; };
-	static bool isSilent() { return silent; }
-	static void suppressErrors() { ++suppressLevel; }
-	static void unsuppressErrors() { if (suppressLevel) --suppressLevel; }
-private:
-	static std::wstring formatError(ErrorType type, const wchar_t* text);
-	static void setFlags(ErrorType type);
-
-	struct QueueEntry
-	{
-		ErrorType type;
-		std::wstring text;
-	};
-
-	static std::vector<QueueEntry> queue;
-	static std::vector<std::wstring> errors;
-	static bool error;
-	static bool fatalError;
-	static bool errorOnWarning;
-	static bool silent;
-	static int suppressLevel;
-};
-
-class TempData
-{
-public:
-	void setFileName(const std::wstring& name) { file.setFileName(name); };
-	void clear() { file.setFileName(L""); }
-	void start();
-	void end();
-	void writeLine(int64_t memoryAddress, const std::wstring& text);
-	bool isOpen() { return file.isOpen(); }
-private:
-	TextFile file;
-};
-
-// file: Core/Assembler.h
-
-#define ARMIPS_VERSION_MAJOR    0
-#define ARMIPS_VERSION_MINOR    11
-#define ARMIPS_VERSION_REVISION 0
-
-enum class ArmipsMode { FILE, MEMORY };
-
-struct LabelDefinition
-{
-	std::wstring originalName;
-	std::wstring name;
-	int64_t value;
-};
-
-struct EquationDefinition
-{
-	std::wstring name;
-	std::wstring value;
-};
-
-struct ArmipsArguments
-{
-	// common
-	ArmipsMode mode;
-	int symFileVersion;
-	bool errorOnWarning;
-	bool silent;
-	StringList* errorsResult;
-	std::vector<EquationDefinition> equList;
-	std::vector<LabelDefinition> labels;
-
-	// file mode
-	std::wstring inputFileName;
-	std::wstring tempFileName;
-	std::wstring symFileName;
-	bool useAbsoluteFileNames;
-
-	// memory mode
-	std::shared_ptr<AssemblerFile> memoryFile;
-	std::wstring content;
-
-	ArmipsArguments()
-	{
-		mode = ArmipsMode::FILE;
-		symFileVersion = 0;
-		errorOnWarning = false;
-		silent = false;
-		errorsResult = nullptr;
-		useAbsoluteFileNames = true;
-	}
-};
-
-bool runArmips(ArmipsArguments& settings);
-
-// file: Core/SymbolTable.h
-
-#include <map>
-
-struct SymbolKey
-{
-	std::wstring name;
-	int file;
+	int segment;
 	int section;
+	size_t sectionOffset;
 };
 
-bool operator<(SymbolKey const& lhs, SymbolKey const& rhs);
 
-class Label
+class DirectiveLoadMipsElf: public CAssemblerCommand
 {
 public:
-	Label(std::wstring name): name(name),defined(false),data(false),updateInfo(true),info(0) { };
-	const std::wstring getName() { return name; };
-	void setOriginalName(const std::wstring& name) { originalName = name; }
-	const std::wstring getOriginalName() { return originalName.empty() ? name : originalName; }
-	int64_t getValue() { return value; };
-	void setValue(int64_t val) { value = val; };
-	bool hasPhysicalValue() { return physicalValueSet; }
-	int64_t getPhysicalValue() { return physicalValue; }
-	void setPhysicalValue(int64_t val) { physicalValue = val; physicalValueSet = true; }
-	bool isDefined() { return defined; };
-	void setDefined(bool b) { defined = b; };
-	bool isData() { return data; };
-	void setIsData(bool b) { data = b; };
-	void setInfo(int inf) { info = inf; };
-	int getInfo() { return info; };
-	void setUpdateInfo(bool b) { updateInfo = b; };
-	bool getUpdateInfo() { return updateInfo; };
-	void setSection(int num) { section = num; }
-	int getSection() { return section; }
+	DirectiveLoadMipsElf(const fs::path& fileName);
+	DirectiveLoadMipsElf(const fs::path& inputName, const fs::path& outputName);
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
+	void writeSymData(SymbolData& symData) const override;
 private:
-	std::wstring name, originalName;
-	int64_t value;
-	int64_t physicalValue;
-	bool physicalValueSet = false;
-	bool defined;
-	bool data;
-	bool updateInfo;
-	int info;
-	int section;
-};
-
-class SymbolTable
-{
-public:
-	SymbolTable();
-	~SymbolTable();
-	void clear();
-	bool symbolExists(const std::wstring& symbol, int file, int section);
-	static bool isValidSymbolName(const std::wstring& symbol);
-	static bool isValidSymbolCharacter(wchar_t character, bool first = false);
-	static bool isLocalSymbol(const std::wstring& symbol, size_t pos = 0) { return symbol.size() >= pos+2 && symbol[pos+0] == '@' && symbol[pos+1] == '@'; };
-	static bool isStaticSymbol(const std::wstring& symbol, size_t pos = 0) { return symbol.size() >= pos+1 && symbol[pos+0] == '@'; };
-	static bool isGlobalSymbol(const std::wstring& symbol, size_t pos = 0) { return !isLocalSymbol(symbol) && !isStaticSymbol(symbol); };
-
-	std::shared_ptr<Label> getLabel(const std::wstring& symbol, int file, int section);
-	bool addEquation(const std::wstring& name, int file, int section, size_t referenceIndex);
-	bool findEquation(const std::wstring& name, int file, int section, size_t& dest);
-	void addLabels(const std::vector<LabelDefinition>& labels);
-	int findSection(int64_t address);
-
-	std::wstring getUniqueLabelName(bool local = false);
-	size_t getLabelCount() { return labels.size(); };
-	size_t getEquationCount() { return equationsCount; };
-	bool isGeneratedLabel(const std::wstring& name) { return generatedLabels.find(name) != generatedLabels.end(); }
-private:
-	void setFileSectionValues(const std::wstring& symbol, int& file, int& section);
-
-	enum SymbolType { LabelSymbol, EquationSymbol };
-	struct SymbolInfo
-	{
-		SymbolType type;
-		size_t index;
-	};
-
-	std::map<SymbolKey,SymbolInfo> symbols;
-	std::vector<std::shared_ptr<Label>> labels;
-	size_t equationsCount;
-	size_t uniqueCount;
-	std::set<std::wstring> generatedLabels;
-};
-
-// file: Core/Common.h
-
-#include <vector>
-
-typedef struct {
-	std::vector<std::wstring> FileList;
-	int FileCount;
-	int FileNum;
-	int LineNumber;
-	int TotalLineCount;
-} tFileInfo;
-
-typedef struct {
-	tFileInfo FileInfo;
-	SymbolTable symbolTable;
-	EncodingTable Table;
-	int Section;
-	bool nocash;
-	bool relativeInclude;
-	int validationPasses;
-	bool memoryMode;
-	std::shared_ptr<AssemblerFile> memoryFile;
-	bool multiThreading;
-} tGlobal;
-
-extern tGlobal Global;
-extern CArchitecture* Arch;
-
-class FileManager;
-extern FileManager* g_fileManager;
-
-std::wstring getFolderNameFromPath(const std::wstring& src);
-std::wstring getFullPathName(const std::wstring& path);
-
-bool checkLabelDefined(const std::wstring& labelName, int section);
-bool checkValidLabelName(const std::wstring& labelName);
-
-bool isPowerOfTwo(int64_t n);
-
-// file: Parser/DirectivesParser.h
-
-#include <unordered_map>
-
-class CAssemblerCommand;
-class Parser;
-
-using DirectiveFunc = std::unique_ptr<CAssemblerCommand> (*)(Parser&,int);
-
-struct DirectiveEntry {
-	DirectiveFunc function;
-	int flags;
-};
-
-using DirectiveMap = std::unordered_multimap<std::wstring, const DirectiveEntry>;
-
-#define DIRECTIVE_USERMASK			0x0000FFFF
-
-// Global flags
-#define DIRECTIVE_NOCASHON			0x00010000
-#define DIRECTIVE_NOCASHOFF			0x00020000
-#define DIRECTIVE_MIPSRESETDELAY	0x00040000
-#define DIRECTIVE_DISABLED			0x00080000
-#define DIRECTIVE_NOTINMEMORY		0x00100000
-#define DIRECTIVE_MANUALSEPARATOR	0x00200000
-
-// file directive flags
-#define DIRECTIVE_POS_PHYSICAL		0x00000001
-#define DIRECTIVE_POS_VIRTUAL		0x00000002
-#define DIRECTIVE_ALIGN_PHYSICAL	0x00000001
-#define DIRECTIVE_ALIGN_VIRTUAL		0x00000002
-#define DIRECTIVE_ALIGN_FILL		0x00000004
-
-// conditional directive flags
-#define DIRECTIVE_COND_IF			0x00000001
-#define DIRECTIVE_COND_IFDEF		0x00000002
-#define DIRECTIVE_COND_IFNDEF		0x00000003
-
-// data directive flags
-#define DIRECTIVE_DATA_8			0x00000001
-#define DIRECTIVE_DATA_16			0x00000002
-#define DIRECTIVE_DATA_32			0x00000003
-#define DIRECTIVE_DATA_64			0x00000004
-#define DIRECTIVE_DATA_ASCII		0x00000005
-#define DIRECTIVE_DATA_SJIS			0x00000006
-#define DIRECTIVE_DATA_CUSTOM		0x00000007
-#define DIRECTIVE_DATA_FLOAT		0x00000008
-#define DIRECTIVE_DATA_DOUBLE		0x00000009
-#define DIRECTIVE_DATA_TERMINATION	0x00000100
-
-// message directive flags
-#define DIRECTIVE_MSG_WARNING		0x00000001
-#define DIRECTIVE_MSG_ERROR			0x00000002
-#define DIRECTIVE_MSG_NOTICE		0x00000003
-
-// MIPS directive flags
-#define DIRECTIVE_MIPS_PSX			0x00000001
-#define DIRECTIVE_MIPS_PS2			0x00000002
-#define DIRECTIVE_MIPS_PSP			0x00000003
-#define DIRECTIVE_MIPS_N64			0x00000004
-#define DIRECTIVE_MIPS_RSP			0x00000005
-
-// ARM directive flags
-#define DIRECTIVE_ARM_GBA			0x00000001
-#define DIRECTIVE_ARM_NDS			0x00000002
-#define DIRECTIVE_ARM_3DS			0x00000003
-#define DIRECTIVE_ARM_BIG			0x00000004
-#define DIRECTIVE_ARM_LITTLE		0x00000005
-
-extern const DirectiveMap directives;
-
-// file: Parser/Tokenizer.h
-
-enum class TokenType
-{
-	Invalid,
-	Identifier,
-	Integer,
-	String,
-	Float,
-	LParen,
-	RParen,
-	Plus,
-	Minus,
-	Mult,
-	Div,
-	Mod,
-	Caret,
-	Tilde,
-	LeftShift,
-	RightShift,
-	Less,
-	Greater,
-	LessEqual,
-	GreaterEqual,
-	Equal,
-	NotEqual,
-	BitAnd,
-	BitOr,
-	LogAnd,
-	LogOr,
-	Exclamation,
-	Question,
-	Colon,
-	LBrack,
-	RBrack,
-	Comma,
-	Assign,
-	Equ,
-	EquValue,
-	Hash,
-	LBrace,
-	RBrace,
-	Dollar,
-	NumberString,
-	Degree,
-	Separator
-};
-
-struct Token
-{
-	friend class Tokenizer;
-
-	Token() : originalText(nullptr), stringValue(nullptr), checked(false)
-	{
-	}
-
-	Token(Token &&src)
-	{
-		// Move strings.
-		originalText = src.originalText;
-		src.originalText = nullptr;
-		stringValue = src.stringValue;
-		src.stringValue = nullptr;
-
-		// Just copy the rest.
-		type = src.type;
-		line = src.line;
-		column = src.column;
-		floatValue = src.floatValue;
-		checked = src.checked;
-	}
-
-	Token(const Token &src) {
-		// Copy strings.
-		originalText = nullptr;
-		if (src.originalText)
-			setOriginalText(src.originalText);
-		stringValue = nullptr;
-		if (src.stringValue)
-			setStringValue(src.stringValue);
-
-		// And copy the rest.
-		type = src.type;
-		line = src.line;
-		column = src.column;
-		floatValue = src.floatValue;
-		checked = src.checked;
-	}
-
-	~Token()
-	{
-		clearOriginalText();
-		clearStringValue();
-	}
-
-	Token& operator=(const Token& src)
-	{
-		// Copy strings.
-		originalText = nullptr;
-		if (src.originalText)
-			setOriginalText(src.originalText);
-		stringValue = nullptr;
-		if (src.stringValue)
-			setStringValue(src.stringValue);
-
-		// And copy the rest.
-		type = src.type;
-		line = src.line;
-		column = src.column;
-		floatValue = src.floatValue;
-		checked = src.checked;
-
-		return *this;
-	}
-
-	void setOriginalText(const std::wstring& t)
-	{
-		setOriginalText(t, 0, t.length());
-	}
-
-	void setOriginalText(const std::wstring& t, const size_t pos, const size_t len)
-	{
-		clearOriginalText();
-		originalText = new wchar_t[len + 1];
-		wmemcpy(originalText, t.data() + pos, len);
-		originalText[len] = 0;
-	}
-
-	std::wstring getOriginalText() const
-	{
-		return originalText;
-	}
-
-	void setStringValue(const std::wstring& t)
-	{
-		setStringValue(t, 0, t.length());
-	}
-
-	void setStringValue(const std::wstring& t, const size_t pos, const size_t len)
-	{
-		clearStringValue();
-		stringValue = new wchar_t[len + 1];
-		wmemcpy(stringValue, t.data() + pos, len);
-		stringValue[len] = 0;
-	}
-
-	void setStringAndOriginalValue(const std::wstring& t)
-	{
-		setStringAndOriginalValue(t, 0, t.length());
-	}
-
-	void setStringAndOriginalValue(const std::wstring& t, const size_t pos, const size_t len)
-	{
-		setStringValue(t, pos, len);
-		clearOriginalText();
-		originalText = stringValue;
-	}
-
-	std::wstring getStringValue() const
-	{
-		if (stringValue)
-			return stringValue;
-		return L"";
-	}
-
-	bool stringValueStartsWith(wchar_t c) const
-	{
-		if (stringValue)
-			return stringValue[0] == c;
-		return false;
-	}
-
-	TokenType type;
-	size_t line;
-	size_t column;
-
-	union
-	{
-		int64_t intValue;
-		double floatValue;
-	};
-
-protected:
-	void clearOriginalText()
-	{
-		if (originalText != stringValue)
-			delete [] originalText;
-		originalText = nullptr;
-	}
-
-	void clearStringValue()
-	{
-		if (stringValue != originalText)
-			delete [] stringValue;
-		stringValue = nullptr;
-	}
-
-	wchar_t* originalText;
-	wchar_t* stringValue;
-
-	bool checked;
-};
-
-typedef std::list<Token> TokenList;
-
-struct TokenizerPosition
-{
-	friend class Tokenizer;
-
-	TokenizerPosition previous()
-	{
-		TokenizerPosition pos = *this;
-		pos.it--;
-		return pos;
-	}
-private:
-	TokenList::iterator it;
-};
-
-class Tokenizer
-{
-public:
-	Tokenizer();
-	const Token& nextToken();
-	const Token& peekToken(int ahead = 0);
-	void eatToken() { eatTokens(1); }
-	void eatTokens(int num);
-	bool atEnd() { return position.it == tokens.end(); }
-	TokenizerPosition getPosition() { return position; }
-	void setPosition(TokenizerPosition pos) { position = pos; }
-	void skipLookahead();
-	std::vector<Token> getTokens(TokenizerPosition start, TokenizerPosition end) const;
-	void registerReplacement(const std::wstring& identifier, std::vector<Token>& tokens);
-	void registerReplacement(const std::wstring& identifier, const std::wstring& newValue);
-	static size_t addEquValue(const std::vector<Token>& tokens);
-	static void clearEquValues() { equValues.clear(); }
-	void resetLookaheadCheckMarks();
-protected:
-	void clearTokens() { tokens.clear(); };
-	void resetPosition() { position.it = tokens.begin(); }
-	void addToken(Token token);
-private:
-	bool processElement(TokenList::iterator& it);
-
-	TokenList tokens;
-	TokenizerPosition position;
-
-	struct Replacement
-	{
-		std::wstring identifier;
-		std::vector<Token> value;
-	};
-
-	Token invalidToken;
-	std::vector<Replacement> replacements;
-	static std::vector<std::vector<Token>> equValues;
-};
-
-class FileTokenizer: public Tokenizer
-{
-public:
-	bool init(TextFile* input);
-protected:
-	Token loadToken();
-	bool isInputAtEnd() { return linePos >= currentLine.size() && input->atEnd(); };
-
-	void skipWhitespace();
-	void createToken(TokenType type, size_t length);
-	void createToken(TokenType type, size_t length, int64_t value);
-	void createToken(TokenType type, size_t length, double value);
-	void createToken(TokenType type, size_t length, const std::wstring& value);
-	void createToken(TokenType type, size_t length, const std::wstring& value, size_t valuePos, size_t valueLength);
-	void createTokenCurrentString(TokenType type, size_t length);
-
-	bool convertInteger(size_t start, size_t end, int64_t& result);
-	bool convertFloat(size_t start, size_t end, double& result);
-	bool parseOperator();
-
-	TextFile* input;
-	std::wstring currentLine;
-	size_t lineNumber;
-	size_t linePos;
-
-	Token token;
-	bool equActive;
-};
-
-class TokenStreamTokenizer: public Tokenizer
-{
-public:
-	void init(const std::vector<Token>& tokens)
-	{
-		clearTokens();
-
-		for (const Token &tok: tokens)
-			addToken(tok);
-
-		resetPosition();
-	}
+	std::shared_ptr<MipsElfFile> file;
+	fs::path inputName;
+	fs::path outputName;
 };
 
 // file: Archs/MIPS/MipsMacros.h
+
+
+#include <memory>
+
+struct MipsImmediateData;
+struct MipsRegisterData;
 
 #define MIPSM_B						0x00000001
 #define MIPSM_BU					0x00000002
@@ -3545,8 +7937,8 @@ class Parser;
 using MipsMacroFunc = std::unique_ptr<CAssemblerCommand> (*)(Parser&,MipsRegisterData&,MipsImmediateData&,int);
 
 struct MipsMacroDefinition {
-	const wchar_t* name;
-	const wchar_t* args;
+	const char* name;
+	const char* args;
 	MipsMacroFunc function;
 	int flags;
 };
@@ -3557,9 +7949,9 @@ class MipsMacroCommand: public CAssemblerCommand
 {
 public:
 	MipsMacroCommand(std::unique_ptr<CAssemblerCommand> content, int macroFlags);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override;
 private:
 	std::unique_ptr<CAssemblerCommand> content;
 	int macroFlags;
@@ -3567,10 +7959,20 @@ private:
 };
 
 // file: Archs/MIPS/MipsParser.h
-#include <unordered_map>
+
+
+#include <memory>
+#include <string>
+
+class CAssemblerCommand;
+class Expression;
+class Parser;
+
+struct MipsMacroDefinition;
+struct tMipsOpcode;
 
 struct MipsRegisterDescriptor {
-	const wchar_t* name;
+	const char* name;
 	int num;
 };
 
@@ -3607,12 +8009,12 @@ private:
 	bool parseCop2BranchCondition(Parser& parser, int& result);
 	bool parseWb(Parser& parser);
 
-	bool decodeCop2BranchCondition(const std::wstring& text, size_t& pos, int& result);
-	bool decodeVfpuType(const std::wstring& name, size_t& pos, int& dest);
-	bool decodeOpcode(const std::wstring& name, const tMipsOpcode& opcode);
+	bool decodeCop2BranchCondition(const std::string& text, size_t& pos, int& result);
+	bool decodeVfpuType(const std::string& name, size_t& pos, int& dest);
+	bool decodeOpcode(const std::string& name, const tMipsOpcode& opcode);
 
 	void setOmittedRegisters(const tMipsOpcode& opcode);
-	bool matchSymbol(Parser& parser, wchar_t symbol);
+	bool matchSymbol(Parser& parser, char symbol);
 	bool parseParameters(Parser& parser, const tMipsOpcode& opcode);
 	bool parseMacroParameters(Parser& parser, const MipsMacroDefinition& macro);
 
@@ -3625,7 +8027,7 @@ private:
 class MipsOpcodeFormatter
 {
 public:
-	const std::wstring& formatOpcode(const MipsOpcodeData& opData, const MipsRegisterData& regData,
+	const std::string& formatOpcode(const MipsOpcodeData& opData, const MipsRegisterData& regData,
 		const MipsImmediateData& immData);
 private:
 	void handleOpcodeName(const MipsOpcodeData& opData);
@@ -3633,10 +8035,98 @@ private:
 		const MipsImmediateData& immData);
 	void handleImmediate(MipsImmediateType type, unsigned int originalValue, unsigned int opcodeFlags);
 
-	std::wstring buffer;
+	std::string buffer;
+};
+
+// file: Archs/MIPS/PsxRelocator.h
+
+
+#include <memory>
+#include <string>
+#include <vector>
+
+class Label;
+class MipsElfRelocator;
+
+enum class PsxRelocationType { WordLiteral, UpperImmediate, LowerImmediate, FunctionCall };
+enum class PsxRelocationRefType { SymblId, SegmentOffset };
+
+struct PsxRelocation
+{
+	PsxRelocationType type;
+	PsxRelocationRefType refType;
+	int segmentOffset = 0;
+	int referenceId = 0;
+	int referencePos = 0;
+	int relativeOffset = 0;
+	int filePos = 0;
+};
+
+struct PsxSegment
+{
+	std::string name;
+	int id;
+	ByteArray data;
+	std::vector<PsxRelocation> relocations;
+};
+
+
+enum class PsxSymbolType { Internal, InternalID, External, BSS, Function };
+
+struct PsxSymbol
+{
+	PsxSymbolType type;
+	std::string name;
+	int segment;
+	int offset;
+	int id;
+	int size;
+	std::shared_ptr<Label> label;
+};
+
+struct PsxRelocatorFile
+{
+	std::string name;
+	std::vector<PsxSegment> segments;
+	std::vector<PsxSymbol> symbols;
+};
+
+class PsxRelocator
+{
+public:
+	bool init(const fs::path& inputName);
+	bool relocate(int& memoryAddress);
+	bool hasDataChanged() { return dataChanged; };
+	const ByteArray& getData() const { return outputData; };
+	void writeSymbols(SymbolData& symData) const;
+private:
+	size_t loadString(ByteArray& data, size_t pos, std::string& dest);
+	bool parseObject(ByteArray data, PsxRelocatorFile& dest);
+	bool relocateFile(PsxRelocatorFile& file, int& relocationAddress);
+
+	ByteArray outputData;
+	std::vector<PsxRelocatorFile> files;
+	MipsElfRelocator* reloc;
+	bool dataChanged;
+};
+
+class DirectivePsxObjImport: public CAssemblerCommand
+{
+public:
+	DirectivePsxObjImport(const fs::path& fileName);
+	~DirectivePsxObjImport() { };
+	bool Validate(const ValidateState &state) override;
+	void Encode() const override;
+	void writeTempData(TempData& tempData) const override { };
+	void writeSymData(SymbolData& symData) const override;
+	inline bool isSuccessfullyImported() { return success; };
+private:
+	bool success;
+	PsxRelocator rel;
 };
 
 // file: Archs/MIPS/CMipsInstruction.cpp
+
 
 CMipsInstruction::CMipsInstruction(MipsOpcodeData& opcode, MipsImmediateData& immediate, MipsRegisterData& registers)
 {
@@ -3713,7 +8203,7 @@ int CMipsInstruction::floatToHalfFloat(int i)
 	return s | (e << 10) | (f >> 13);
 }
 
-bool CMipsInstruction::Validate()
+bool CMipsInstruction::Validate(const ValidateState &state)
 {
 	bool Result = false;
 
@@ -3723,7 +8213,7 @@ bool CMipsInstruction::Validate()
 	RamPos = g_fileManager->getVirtualAddress();
 	if (RamPos % 4)
 	{
-		Logger::queueError(Logger::Error,L"opcode not aligned to word boundary");
+		Logger::queueError(Logger::Error, "opcode not aligned to word boundary");
 		return false;
 	}
 
@@ -3732,9 +8222,9 @@ bool CMipsInstruction::Validate()
 	{
 		if (immediateData.primary.expression.isLoaded())
 		{
-			if (immediateData.primary.expression.evaluateInteger(immediateData.primary.value) == false)
+			if (!immediateData.primary.expression.evaluateInteger(immediateData.primary.value))
 			{
-				Logger::queueError(Logger::Error, L"Invalid immediate expression");
+				Logger::queueError(Logger::Error, "Invalid immediate expression");
 				return false;
 			}
 
@@ -3748,7 +8238,7 @@ bool CMipsInstruction::Validate()
 		{
 			if (immediateData.primary.value % 4)
 			{
-				Logger::queueError(Logger::Error,L"Immediate must be word aligned");
+				Logger::queueError(Logger::Error, "Immediate must be word aligned");
 				return false;
 			}
 		}
@@ -3765,7 +8255,7 @@ bool CMipsInstruction::Validate()
 
 			if (num > 0x20000 || num < (-0x20000))
 			{
-				Logger::queueError(Logger::Error,L"Branch target %08X out of range",immediateData.primary.value);
+				Logger::queueError(Logger::Error, "Branch target %08X out of range",immediateData.primary.value);
 				return false;
 			}
 			immediateData.primary.value = num >> 2;
@@ -3780,7 +8270,7 @@ bool CMipsInstruction::Validate()
 
 			if (immediateData.primary.value & ((1 << shift) - 1))
 			{
-				Logger::queueError(Logger::Error,L"Offset must be %d-byte aligned",1<<shift);
+				Logger::queueError(Logger::Error, "Offset must be %d-byte aligned",1<<shift);
 				return false;
 			}
 			immediateData.primary.value = immediateData.primary.value >> shift;
@@ -3792,7 +8282,7 @@ bool CMipsInstruction::Validate()
 
 		if ((unsigned int)std::abs(immediateData.primary.value) > mask)
 		{
-			Logger::queueError(Logger::Error,L"Immediate value 0x%0*X out of range",digits,immediateData.primary.value);
+			Logger::queueError(Logger::Error, "Immediate value 0x%0*X out of range",digits,immediateData.primary.value);
 			return false;
 		}
 
@@ -3803,9 +8293,9 @@ bool CMipsInstruction::Validate()
 	{
 		if (immediateData.secondary.expression.isLoaded())
 		{
-			if (immediateData.secondary.expression.evaluateInteger(immediateData.secondary.value) == false)
+			if (!immediateData.secondary.expression.evaluateInteger(immediateData.secondary.value))
 			{
-				Logger::queueError(Logger::Error, L"Invalid immediate expression");
+				Logger::queueError(Logger::Error, "Invalid immediate expression");
 				return false;
 			}
 
@@ -3817,7 +8307,7 @@ bool CMipsInstruction::Validate()
 		case MipsImmediateType::CacheOp:
 			if ((unsigned int)immediateData.secondary.value > 0x1f)
 			{
-				Logger::queueError(Logger::Error,L"Immediate value %02X out of range",immediateData.secondary.value);
+				Logger::queueError(Logger::Error, "Immediate value %02X out of range",immediateData.secondary.value);
 				return false;
 			}
 			break;
@@ -3825,7 +8315,7 @@ bool CMipsInstruction::Validate()
 		case MipsImmediateType::Ins:
 			if (immediateData.secondary.value > 32 || immediateData.secondary.value == 0)
 			{
-				Logger::queueError(Logger::Error,L"Immediate value %02X out of range",immediateData.secondary.value);
+				Logger::queueError(Logger::Error, "Immediate value %02X out of range",immediateData.secondary.value);
 				return false;
 			}
 
@@ -3840,42 +8330,42 @@ bool CMipsInstruction::Validate()
 	}
 
 	// check load delay
-	if (Mips.hasLoadDelay() && Mips.GetLoadDelay() && IgnoreLoadDelay == false)
+	if (Mips.hasLoadDelay() && Mips.GetLoadDelay() && !IgnoreLoadDelay)
 	{
 		bool fix = false;
 
 		if (registerData.grd.num != -1 && registerData.grd.num == Mips.GetLoadDelayRegister())
 		{
-			Logger::queueError(Logger::Warning,L"register %S may not be available due to load delay",registerData.grd.name);
+			Logger::queueError(Logger::Warning, "register %S may not be available due to load delay",registerData.grd.name);
 			fix = true;
 		} else if (registerData.grs.num != -1 && registerData.grs.num == Mips.GetLoadDelayRegister())
 		{
-			Logger::queueError(Logger::Warning,L"register %S may not be available due to load delay",registerData.grs.name);
+			Logger::queueError(Logger::Warning, "register %S may not be available due to load delay",registerData.grs.name);
 			fix = true;
 		} else if (registerData.grt.num != -1 && registerData.grt.num == Mips.GetLoadDelayRegister()
 			&& !(opcodeData.opcode.flags & MO_IGNORERTD))
 		{
-			Logger::queueError(Logger::Warning,L"register %S may not be available due to load delay",registerData.grt.name);
+			Logger::queueError(Logger::Warning, "register %S may not be available due to load delay",registerData.grt.name);
 			fix = true;
 		}
 
-		if (Mips.GetFixLoadDelay() == true && fix == true)
+		if (Mips.GetFixLoadDelay() && fix)
 		{
 			addNop = true;
-			Logger::queueError(Logger::Notice,L"added nop to ensure correct behavior");
+			Logger::queueError(Logger::Notice, "added nop to ensure correct behavior");
 		}
 	}
 
-	if ((opcodeData.opcode.flags & MO_NODELAYSLOT) && Mips.GetDelaySlot() == true && IgnoreLoadDelay == false)
+	if ((opcodeData.opcode.flags & MO_NODELAYSLOT) && Mips.GetDelaySlot() && !IgnoreLoadDelay)
 	{
-		Logger::queueError(Logger::Error,L"This instruction can't be in a delay slot");
+		Logger::queueError(Logger::Error, "This instruction can't be in a delay slot");
 	}
 
-	Mips.SetDelaySlot(opcodeData.opcode.flags & MO_DELAY ? true : false);
+	Mips.SetDelaySlot((opcodeData.opcode.flags & MO_DELAY) != 0);
 
 	// now check if this opcode causes a load delay
 	if (Mips.hasLoadDelay())
-		Mips.SetLoadDelay(opcodeData.opcode.flags & MO_DELAYRT ? true : false,registerData.grt.num);
+		Mips.SetLoadDelay((opcodeData.opcode.flags & MO_DELAYRT) != 0,registerData.grt.num);
 
 	if (previousNop != addNop)
 		Result = true;
@@ -3886,7 +8376,7 @@ bool CMipsInstruction::Validate()
 
 void CMipsInstruction::encodeNormal() const
 {
-	int encoding = opcodeData.opcode.destencoding;
+	int32_t encoding = opcodeData.opcode.destencoding;
 
 	if (registerData.grs.num != -1) encoding |= MIPS_RS(registerData.grs.num);	// source reg
 	if (registerData.grt.num != -1) encoding |= MIPS_RT(registerData.grt.num);	// target reg
@@ -4004,54 +8494,11 @@ void CMipsInstruction::Encode() const
 void CMipsInstruction::writeTempData(TempData& tempData) const
 {
 	MipsOpcodeFormatter formatter;
-	tempData.writeLine(RamPos,formatter.formatOpcode(opcodeData,registerData,immediateData));
+	tempData.writeLine(RamPos, formatter.formatOpcode(opcodeData,registerData,immediateData));
 }
 
-// file: Archs/MIPS/MipsExpressionFunctions.h
-
-extern const ExpressionFunctionMap mipsExpressionFunctions;
-
-// file: Archs/MIPS/MipsElfRelocator.h
-
-enum {
-	R_MIPS_NONE,
-	R_MIPS_16,
-	R_MIPS_32,
-	R_MIPS_REL32,
-	R_MIPS_26,
-	R_MIPS_HI16,
-	R_MIPS_LO16,
-	R_MIPS_GPREL16,
-	R_MIPS_LITERAL,
-	R_MIPS_GOT16,
-	R_MIPS_PC16,
-	R_MIPS_CALL16,
-	R_MIPS_GPREL32
-};
-
-class MipsElfRelocator: public IElfRelocator
-{
-public:
-	int expectedMachine() const override;
-	bool relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors) override;
-	bool finish(std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors) override;
-	void setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType) override;
-	std::unique_ptr<CAssemblerCommand> generateCtorStub(std::vector<ElfRelocatorCtor>& ctors) override;
-private:
-	bool processHi16Entries(uint32_t lo16Opcode, int64_t lo16RelocationBase, std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors);
-
-	struct Hi16Entry
-	{
-		Hi16Entry(int64_t offset, int64_t relocationBase, uint32_t opcode) : offset(offset), relocationBase(relocationBase), opcode(opcode) {}
-		int64_t offset;
-		int64_t relocationBase;
-		uint32_t opcode;
-	};
-
-	std::vector<Hi16Entry> hi16Entries;
-};
-
 // file: Archs/MIPS/Mips.cpp
+
 
 CMipsArchitecture Mips;
 
@@ -4082,9 +8529,9 @@ std::unique_ptr<CAssemblerCommand> CMipsArchitecture::parseOpcode(Parser& parser
 	return mipsParser.parseOpcode(parser);
 }
 
-const ExpressionFunctionMap& CMipsArchitecture::getExpressionFunctions()
+void CMipsArchitecture::registerExpressionFunctions(ExpressionFunctionHandler &handler)
 {
-	return mipsExpressionFunctions;
+	registerMipsExpressionFunctions(handler);
 }
 
 void CMipsArchitecture::NextSection()
@@ -4108,8 +8555,8 @@ std::unique_ptr<IElfRelocator> CMipsArchitecture::getElfRelocator()
 	case MARCH_PS2:
 	case MARCH_PSP:
 	case MARCH_N64:
-		return ::make_unique<MipsElfRelocator>();
 	case MARCH_PSX:
+		return std::make_unique<MipsElfRelocator>();
 	case MARCH_RSP:
 	default:
 		return nullptr;
@@ -4122,64 +8569,8 @@ void CMipsArchitecture::SetLoadDelay(bool Delay, int Register)
 	LoadDelayRegister = Register;
 }
 
-// file: Archs/MIPS/MipsElfFile.h
-
-class MipsElfFile: public AssemblerFile
-{
-public:
-	MipsElfFile();
-	virtual bool open(bool onlyCheck);
-	virtual void close();
-	virtual bool isOpen() { return opened; };
-	virtual bool write(void* data, size_t length);
-	virtual int64_t getVirtualAddress();
-	virtual int64_t getPhysicalAddress();
-	virtual int64_t getHeaderSize();
-	virtual bool seekVirtual(int64_t virtualAddress);
-	virtual bool seekPhysical(int64_t physicalAddress);
-	virtual bool getModuleInfo(SymDataModuleInfo& info);
-	virtual void beginSymData(SymbolData& symData);
-	virtual void endSymData(SymbolData& symData);
-	virtual const std::wstring& getFileName() { return fileName; };
-
-	bool load(const std::wstring& fileName, const std::wstring& outputFileName);
-	void save();
-	bool setSection(const std::wstring& name);
-private:
-	ElfFile elf;
-	std::wstring fileName;
-	std::wstring outputFileName;
-	bool opened;
-	int platform;
-
-	int segment;
-	int section;
-	size_t sectionOffset;
-};
-
-
-class DirectiveLoadMipsElf: public CAssemblerCommand
-{
-public:
-	DirectiveLoadMipsElf(const std::wstring& fileName);
-	DirectiveLoadMipsElf(const std::wstring& inputName, const std::wstring& outputName);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	std::shared_ptr<MipsElfFile> file;
-	std::wstring inputName;
-	std::wstring outputName;
-};
-
-// file: Util/CRC.h
-
-unsigned short getCrc16(unsigned char* Source, size_t len);
-unsigned int getCrc32(unsigned char* Source, size_t len);
-unsigned int getChecksum(unsigned char* Source, size_t len);
-
 // file: Archs/MIPS/MipsElfFile.cpp
+
 
 MipsElfFile::MipsElfFile()
 {
@@ -4221,7 +8612,7 @@ int64_t MipsElfFile::getVirtualAddress()
 	}
 
 	// segmentless sections don't have a virtual address
-	Logger::queueError(Logger::Error,L"Not inside a mapped section");
+	Logger::queueError(Logger::Error, "Not inside a mapped section");
 	return -1;
 }
 
@@ -4241,14 +8632,14 @@ int64_t MipsElfFile::getPhysicalAddress()
 		return sect->getOffset();
 	}
 
-	Logger::queueError(Logger::Error,L"Not inside a section");
+	Logger::queueError(Logger::Error, "Not inside a section");
 	return -1;
 }
 
 int64_t MipsElfFile::getHeaderSize()
 {
 	// this method is not used
-	Logger::queueError(Logger::Error,L"Unimplemented method");
+	Logger::queueError(Logger::Error, "Unimplemented method");
 	return -1;
 }
 
@@ -4279,13 +8670,13 @@ bool MipsElfFile::seekVirtual(int64_t virtualAddress)
 				}
 			}
 
-			Logger::queueError(Logger::Error,L"Found segment, but no containing section");
+			Logger::queueError(Logger::Error, "Found segment, but no containing section");
 			return false;
 		}
 	}
 
 	// segmentless sections don't have a virtual address
-	Logger::printError(Logger::Error,L"Couldn't find a mapped section");
+	Logger::printError(Logger::Error, "Couldn't find a mapped section");
 	return false;
 }
 
@@ -4316,7 +8707,7 @@ bool MipsElfFile::seekPhysical(int64_t physicalAddress)
 				}
 			}
 
-			Logger::queueError(Logger::Error,L"Found segment, but no containing section");
+			Logger::queueError(Logger::Error, "Found segment, but no containing section");
 			return false;
 		}
 	}
@@ -4339,7 +8730,7 @@ bool MipsElfFile::seekPhysical(int64_t physicalAddress)
 
 	segment = -1;
 	section = -1;
-	Logger::queueError(Logger::Error,L"Couldn't find a section");
+	Logger::queueError(Logger::Error, "Couldn't find a section");
 	return false;
 }
 
@@ -4368,29 +8759,29 @@ bool MipsElfFile::write(void* data, size_t length)
 		return false;
 	}
 
-	Logger::printError(Logger::Error,L"Not inside a section");
+	Logger::printError(Logger::Error, "Not inside a section");
 	return false;
 }
 
-bool MipsElfFile::load(const std::wstring& fileName, const std::wstring& outputFileName)
+bool MipsElfFile::load(const fs::path& fileName, const fs::path& outputFileName)
 {
 	this->outputFileName = outputFileName;
 
-	if (elf.load(fileName,true) == false)
+	if (!elf.load(fileName,true))
 	{
-		Logger::printError(Logger::FatalError,L"Failed to load %s",fileName);
+		Logger::printError(Logger::FatalError, "Failed to load %s",fileName.u8string());
 		return false;
 	}
 
 	if (elf.getType() == 0xFFA0)
 	{
-		Logger::printError(Logger::FatalError,L"Relocatable ELF %s not supported yet",fileName);
+		Logger::printError(Logger::FatalError, "Relocatable ELF %s not supported yet",fileName.u8string());
 		return false;
 	}
 
 	if (elf.getType() != 2)
 	{
-		Logger::printError(Logger::FatalError,L"Unknown ELF %s type %d",fileName,elf.getType());
+		Logger::printError(Logger::FatalError, "Unknown ELF %s type %d",fileName,elf.getType());
 		return false;
 	}
 
@@ -4400,15 +8791,13 @@ bool MipsElfFile::load(const std::wstring& fileName, const std::wstring& outputF
 	return true;
 }
 
-bool MipsElfFile::setSection(const std::wstring& name)
+bool MipsElfFile::setSection(const std::string& name)
 {
-	std::string utf8Name = convertWStringToUtf8(name);
-
 	// look in segments
 	for (size_t i = 0; i < elf.getSegmentCount(); i++)
 	{
 		ElfSegment* seg = elf.getSegment(i);
-		int n = seg->findSection(utf8Name);
+		int n = seg->findSection(name);
 		if (n != -1)
 		{
 			segment = (int) i;
@@ -4418,7 +8807,7 @@ bool MipsElfFile::setSection(const std::wstring& name)
 	}
 
 	// look in stray sections
-	int n = elf.findSegmentlessSection(utf8Name);
+	int n = elf.findSegmentlessSection(name);
 	if (n != -1)
 	{
 		segment = -1;
@@ -4426,7 +8815,7 @@ bool MipsElfFile::setSection(const std::wstring& name)
 		return true;
 	}
 
-	Logger::queueError(Logger::Warning,L"Section %s not found",name);
+	Logger::queueError(Logger::Warning, "Section %s not found",name);
 	return false;
 }
 
@@ -4439,12 +8828,12 @@ void MipsElfFile::save()
 // DirectiveLoadPspElf
 //
 
-DirectiveLoadMipsElf::DirectiveLoadMipsElf(const std::wstring& fileName)
+DirectiveLoadMipsElf::DirectiveLoadMipsElf(const fs::path& fileName)
 {
 	file = std::make_shared<MipsElfFile>();
 
 	this->inputName = getFullPathName(fileName);
-	if (file->load(this->inputName,this->inputName) == false)
+	if (!file->load(this->inputName,this->inputName))
 	{
 		file = nullptr;
 		return;
@@ -4453,13 +8842,13 @@ DirectiveLoadMipsElf::DirectiveLoadMipsElf(const std::wstring& fileName)
 	g_fileManager->addFile(file);
 }
 
-DirectiveLoadMipsElf::DirectiveLoadMipsElf(const std::wstring& inputName, const std::wstring& outputName)
+DirectiveLoadMipsElf::DirectiveLoadMipsElf(const fs::path& inputName, const fs::path& outputName)
 {
 	file = std::make_shared<MipsElfFile>();
 
 	this->inputName = getFullPathName(inputName);
 	this->outputName = getFullPathName(outputName);
-	if (file->load(this->inputName,this->outputName) == false)
+	if (!file->load(this->inputName,this->outputName))
 	{
 		file = nullptr;
 		return;
@@ -4468,9 +8857,9 @@ DirectiveLoadMipsElf::DirectiveLoadMipsElf(const std::wstring& inputName, const 
 	g_fileManager->addFile(file);
 }
 
-bool DirectiveLoadMipsElf::Validate()
+bool DirectiveLoadMipsElf::Validate(const ValidateState &state)
 {
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	g_fileManager->openFile(file,true);
 	return false;
 }
@@ -4484,10 +8873,10 @@ void DirectiveLoadMipsElf::writeTempData(TempData& tempData) const
 {
 	if (outputName.empty())
 	{
-		tempData.writeLine(g_fileManager->getVirtualAddress(),formatString(L".loadelf \"%s\"",inputName));
+		tempData.writeLine(g_fileManager->getVirtualAddress(),tfm::format(".loadelf \"%s\"",inputName.u8string()));
 	} else {
-		tempData.writeLine(g_fileManager->getVirtualAddress(),formatString(L".loadelf \"%s\",\"%s\"",
-			inputName,outputName));
+		tempData.writeLine(g_fileManager->getVirtualAddress(),tfm::format(".loadelf \"%s\",\"%s\"",
+			inputName.u8string(),outputName.u8string()));
 	}
 }
 
@@ -4496,183 +8885,15 @@ void DirectiveLoadMipsElf::writeSymData(SymbolData& symData) const
 	file->beginSymData(symData);
 }
 
-// file: Commands/CommandSequence.h
-
-class Label;
-
-class CommandSequence: public CAssemblerCommand
-{
-public:
-	CommandSequence();
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-	void addCommand(std::unique_ptr<CAssemblerCommand> cmd) { commands.push_back(std::move(cmd)); }
-private:
-	std::vector<std::unique_ptr<CAssemblerCommand>> commands;
-};
-
-// file: Parser/Parser.h
-#include <set>
-#include <map>
-#include <unordered_map>
-
-struct AssemblyTemplateArgument
-{
-	const wchar_t* variableName;
-	std::wstring value;
-};
-
-struct ParserMacro
-{
-	std::wstring name;
-	std::vector<std::wstring> parameters;
-	std::set<std::wstring> labels;
-	std::vector<Token> content;
-	size_t counter;
-};
-
-enum class ConditionalResult { Unknown, True, False };
-
-class Parser
-{
-public:
-	Parser();
-	bool atEnd() { return entries.back().tokenizer->atEnd(); }
-
-	void addEquation(const Token& start, const std::wstring& name, const std::wstring& value);
-
-	Expression parseExpression();
-	bool parseExpressionList(std::vector<Expression>& list, int min = -1, int max = -1);
-	bool parseIdentifier(std::wstring& dest);
-	std::unique_ptr<CAssemblerCommand> parseCommand();
-	std::unique_ptr<CAssemblerCommand> parseCommandSequence(wchar_t indicator = 0, const std::initializer_list<const wchar_t*> terminators = {});
-	std::unique_ptr<CAssemblerCommand> parseFile(TextFile& file, bool virtualFile = false);
-	std::unique_ptr<CAssemblerCommand> parseString(const std::wstring& text);
-	std::unique_ptr<CAssemblerCommand> parseTemplate(const std::wstring& text, const std::initializer_list<AssemblyTemplateArgument> variables = {});
-	std::unique_ptr<CAssemblerCommand> parseDirective(const DirectiveMap &directiveSet);
-	bool matchToken(TokenType type, bool optional = false);
-
-	Tokenizer* getTokenizer() { return entries.back().tokenizer; };
-	const Token& peekToken(int ahead = 0) { return getTokenizer()->peekToken(ahead); };
-	const Token& nextToken() { return getTokenizer()->nextToken(); };
-	void eatToken() { getTokenizer()->eatToken(); };
-	void eatTokens(int num) { getTokenizer()->eatTokens(num); };
-
-	void pushConditionalResult(ConditionalResult cond);
-	void popConditionalResult() { conditionStack.pop_back(); };
-	bool isInsideTrueBlock() { return conditionStack.back().inTrueBlock; }
-	bool isInsideUnknownBlock() { return conditionStack.back().inUnknownBlock; }
-
-	template <typename... Args>
-	void printError(const Token& token, const wchar_t* text, const Args&... args)
-	{
-		errorLine = token.line;
-		Global.FileInfo.LineNumber = (int) token.line;
-		std::wstring errorText = formatString(text,args...);
-		Logger::printError(Logger::Error,errorText);
-		error = true;
-	}
-
-	bool hasError() { return error; }
-	void updateFileInfo();
-protected:
-	void clearError() { error = false; }
-	std::unique_ptr<CAssemblerCommand> handleError();
-
-	std::unique_ptr<CAssemblerCommand> parse(Tokenizer* tokenizer, bool virtualFile, const std::wstring& name = L"");
-	std::unique_ptr<CAssemblerCommand> parseLabel();
-	bool checkEquLabel();
-	bool checkMacroDefinition();
-	std::unique_ptr<CAssemblerCommand> parseMacroCall();
-
-	struct FileEntry
-	{
-		Tokenizer* tokenizer;
-		bool virtualFile;
-		int fileNum;
-		int previousCommandLine;
-	};
-
-	std::vector<FileEntry> entries;
-	std::map<std::wstring,ParserMacro> macros;
-	std::set<std::wstring> macroLabels;
-	bool initializingMacro;
-	bool error;
-	size_t errorLine;
-
-	bool overrideFileInfo;
-	int overrideFileNum;
-	int overrideLineNum;
-
-	struct ConditionInfo
-	{
-		bool inTrueBlock;
-		bool inUnknownBlock;
-	};
-
-	std::vector<ConditionInfo> conditionStack;
-};
-
-struct TokenSequenceValue
-{
-	TokenSequenceValue(const wchar_t* text)
-	{
-		type = TokenType::Identifier;
-		textValue = text;
-	}
-
-	TokenSequenceValue(int64_t num)
-	{
-		type = TokenType::Integer;
-		intValue = num;
-	}
-
-	TokenSequenceValue(double num)
-	{
-		type = TokenType::Float;
-		floatValue = num;
-	}
-
-
-	TokenType type;
-	union
-	{
-		const wchar_t* textValue;
-		int64_t intValue;
-		double floatValue;
-	};
-};
-
-using TokenSequence = std::initializer_list<TokenType>;
-using TokenValueSequence = std::initializer_list<TokenSequenceValue>;
-
-class TokenSequenceParser
-{
-public:
-	void addEntry(int result, TokenSequence tokens, TokenValueSequence values);
-	bool parse(Parser& parser, int& result);
-	size_t getEntryCount() { return entries.size(); }
-private:
-	struct Entry
-	{
-		std::vector<TokenType> tokens;
-		std::vector<TokenSequenceValue> values;
-		int result;
-	};
-
-	std::vector<Entry> entries;
-};
-
 // file: Archs/MIPS/MipsElfRelocator.cpp
+
 
 int MipsElfRelocator::expectedMachine() const
 {
 	return EM_MIPS;
 }
 
-bool MipsElfRelocator::processHi16Entries(uint32_t lo16Opcode, int64_t lo16RelocationBase, std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors)
+bool MipsElfRelocator::processHi16Entries(uint32_t lo16Opcode, int64_t lo16RelocationBase, std::vector<RelocationAction>& actions, std::vector<std::string>& errors)
 {
 	bool result = true;
 
@@ -4680,7 +8901,7 @@ bool MipsElfRelocator::processHi16Entries(uint32_t lo16Opcode, int64_t lo16Reloc
 	{
 		if (hi16.relocationBase != lo16RelocationBase)
 		{
-			errors.push_back(formatString(L"Mismatched R_MIPS_HI16 with	R_MIPS_LO16 of a different symbol"));
+			errors.push_back(tfm::format("Mismatched R_MIPS_HI16 with R_MIPS_LO16 of a different symbol"));
 			result = false;
 			continue;
 		}
@@ -4695,7 +8916,7 @@ bool MipsElfRelocator::processHi16Entries(uint32_t lo16Opcode, int64_t lo16Reloc
 	return result;
 }
 
-bool MipsElfRelocator::relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors)
+bool MipsElfRelocator::relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors)
 {
 	unsigned int op = data.opcode;
 	bool result = true;
@@ -4717,7 +8938,7 @@ bool MipsElfRelocator::relocateOpcode(int type, const RelocationData& data, std:
 		op = (op&0xffff0000) | (((op&0xffff)+data.relocationBase)&0xffff);
 		break;
 	default:
-		errors.emplace_back(formatString(L"Unknown MIPS relocation type %d",type));
+		errors.emplace_back(tfm::format("Unknown MIPS relocation type %d",type));
 		return false;
 	}
 
@@ -4725,7 +8946,7 @@ bool MipsElfRelocator::relocateOpcode(int type, const RelocationData& data, std:
 	return result;
 }
 
-bool MipsElfRelocator::finish(std::vector<RelocationAction>& actions, std::vector<std::wstring>& errors)
+bool MipsElfRelocator::finish(std::vector<RelocationAction>& actions, std::vector<std::string>& errors)
 {
 	// This shouldn't happen. If it does, relocate as if there was no lo16 opcode
 	if (!hi16Entries.empty())
@@ -4739,7 +8960,7 @@ void MipsElfRelocator::setSymbolAddress(RelocationData& data, int64_t symbolAddr
 	data.targetSymbolType = symbolType;
 }
 
-const wchar_t* mipsCtorTemplate = LR"(
+const char* mipsCtorTemplate = R"(
 	addiu	sp,-32
 	sw		ra,0(sp)
 	sw		s0,4(sp)
@@ -4777,33 +8998,34 @@ std::unique_ptr<CAssemblerCommand> MipsElfRelocator::generateCtorStub(std::vecto
 	if (ctors.size() != 0)
 	{
 		// create constructor table
-		std::wstring table;
+		std::string table;
 		for (size_t i = 0; i < ctors.size(); i++)
 		{
 			if (i != 0)
 				table += ',';
-			table += formatString(L"%s,%s+0x%08X",ctors[i].symbolName,ctors[i].symbolName,ctors[i].size);
+			table += tfm::format("%s,%s+0x%08X",ctors[i].symbolName,ctors[i].symbolName,ctors[i].size);
 		}
 
 		return parser.parseTemplate(mipsCtorTemplate,{
-			{ L"%ctorTable%",		Global.symbolTable.getUniqueLabelName() },
-			{ L"%ctorTableSize%",	formatString(L"%d",ctors.size()*8) },
-			{ L"%outerLoopLabel%",	Global.symbolTable.getUniqueLabelName() },
-			{ L"%innerLoopLabel%",	Global.symbolTable.getUniqueLabelName() },
-			{ L"%ctorContent%",		table },
+			{ "%ctorTable%",		Global.symbolTable.getUniqueLabelName().string() },
+			{ "%ctorTableSize%",	tfm::format("%d",ctors.size()*8) },
+			{ "%outerLoopLabel%",	Global.symbolTable.getUniqueLabelName().string() },
+			{ "%innerLoopLabel%",	Global.symbolTable.getUniqueLabelName().string() },
+			{ "%ctorContent%",		table },
 		});
 	} else {
-		return parser.parseTemplate(L"jr ra :: nop");
+		return parser.parseTemplate("jr ra :: nop");
 	}
 }
 
 // file: Archs/MIPS/MipsExpressionFunctions.cpp
 
+
 #define GET_PARAM(params,index,dest) \
 	if (getExpFuncParameter(params,index,dest,funcName,false) == false) \
 		return ExpressionValue();
 
-ExpressionValue expFuncHi(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncHi(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t value;
 
@@ -4812,7 +9034,7 @@ ExpressionValue expFuncHi(const std::wstring& funcName, const std::vector<Expres
 	return ExpressionValue((int64_t)((value >> 16) + ((value & 0x8000) != 0)) & 0xFFFF);
 }
 
-ExpressionValue expFuncLo(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncLo(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t value;
 
@@ -4821,12 +9043,21 @@ ExpressionValue expFuncLo(const std::wstring& funcName, const std::vector<Expres
 	return ExpressionValue((int64_t)(int16_t)(value & 0xFFFF));
 }
 
-const ExpressionFunctionMap mipsExpressionFunctions = {
-	{ L"lo",			{ &expFuncLo,				1,	1,	ExpFuncSafety::Safe } },
-	{ L"hi",			{ &expFuncHi,				1,	1,	ExpFuncSafety::Safe } },
+const ExpressionFunctionEntry mipsExpressionFunctions[] = {
+	{ "lo", &expFuncLo, 1, 1, ExpFuncSafety::Safe },
+	{ "hi", &expFuncHi, 1, 1, ExpFuncSafety::Safe },
 };
 
+void registerMipsExpressionFunctions(ExpressionFunctionHandler &handler)
+{
+	for (const auto &func : mipsExpressionFunctions)
+	{
+		handler.addFunction(Identifier(func.name), func.function, func.minParams, func.maxParams, func.safety);
+	}
+}
+
 // file: Archs/MIPS/MipsMacros.cpp
+
 
 MipsMacroCommand::MipsMacroCommand(std::unique_ptr<CAssemblerCommand> content, int macroFlags)
 {
@@ -4835,23 +9066,23 @@ MipsMacroCommand::MipsMacroCommand(std::unique_ptr<CAssemblerCommand> content, i
 	IgnoreLoadDelay = Mips.GetIgnoreDelay();
 }
 
-bool MipsMacroCommand::Validate()
+bool MipsMacroCommand::Validate(const ValidateState &state)
 {
 	int64_t memoryPos = g_fileManager->getVirtualAddress();
 	content->applyFileInfo();
-	bool result = content->Validate();
+	bool result = content->Validate(state);
 	int64_t newMemoryPos = g_fileManager->getVirtualAddress();
 
 	applyFileInfo();
 
-	if (IgnoreLoadDelay == false && Mips.GetDelaySlot() == true && (newMemoryPos-memoryPos) > 4
+	if (!IgnoreLoadDelay && Mips.GetDelaySlot() && (newMemoryPos-memoryPos) > 4
 		&& (macroFlags & MIPSM_DONTWARNDELAYSLOT) == 0)
 	{
-		Logger::queueError(Logger::Warning,L"Macro with multiple opcodes used inside a delay slot");
+		Logger::queueError(Logger::Warning, "Macro with multiple opcodes used inside a delay slot");
 	}
 
 	if (newMemoryPos == memoryPos)
-		Logger::queueError(Logger::Warning,L"Empty macro content");
+		Logger::queueError(Logger::Warning, "Empty macro content");
 
 	return result;
 }
@@ -4867,70 +9098,68 @@ void MipsMacroCommand::writeTempData(TempData& tempData) const
 	content->writeTempData(tempData);
 }
 
-std::wstring preprocessMacro(const wchar_t* text, MipsImmediateData& immediates)
+std::string preprocessMacro(const char* text, MipsImmediateData& immediates)
 {
 	// A macro is turned into a sequence of opcodes that are parsed seperately.
 	// Any expressions used in the macro may be evaluated at a different memory
 	// position, so the '.' operator needs to be replaced by a label at the start
 	// of the macro
-	std::wstring labelName = Global.symbolTable.getUniqueLabelName(true);
+	Identifier labelName = Global.symbolTable.getUniqueLabelName(true);
 	immediates.primary.expression.replaceMemoryPos(labelName);
 	immediates.secondary.expression.replaceMemoryPos(labelName);
 
-	return formatString(L"%s: %s",labelName,text);
+	return tfm::format("%s: %s",labelName,text);
 }
 
-std::unique_ptr<CAssemblerCommand> createMacro(Parser& parser, const std::wstring& text, int flags, std::initializer_list<AssemblyTemplateArgument> variables)
+std::unique_ptr<CAssemblerCommand> createMacro(Parser& parser, const std::string& text, int flags, std::initializer_list<AssemblyTemplateArgument> variables)
 {
 	std::unique_ptr<CAssemblerCommand> content = parser.parseTemplate(text,variables);
-	return ::make_unique<MipsMacroCommand>(std::move(content),flags);
+	return std::make_unique<MipsMacroCommand>(std::move(content),flags);
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroAbs(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* templateAbs = LR"(
+	const char* templateAbs = R"(
 		%sraop% 	r1,%rs%,31
 		xor 		%rd%,%rs%,r1
 		%subop% 	%rd%,%rd%,r1
 	)";
 
-	std::wstring sraop, subop;
+	std::string sraop, subop;
 
 	switch (flags & MIPSM_ACCESSMASK)
 	{
-	case MIPSM_W:	sraop = L"sra"; subop = L"subu"; break;
-	case MIPSM_DW:	sraop = L"dsra32"; subop = L"dsubu"; break;
+	case MIPSM_W:	sraop = "sra"; subop = "subu"; break;
+	case MIPSM_DW:	sraop = "dsra32"; subop = "dsubu"; break;
 	default: return nullptr;
 	}
 
-	std::wstring macroText = preprocessMacro(templateAbs,immediates);
+	std::string macroText = preprocessMacro(templateAbs,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%rd%",		registers.grd.name },
-			{ L"%rs%",		registers.grs.name },
-			{ L"%sraop%",	sraop },
-			{ L"%subop%",	subop },
+			{ "%rd%",		registers.grd.name.string() },
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%sraop%",	sraop },
+			{ "%subop%",	subop },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroLiFloat(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* templateLiFloat = LR"(
+	const char* templateLiFloat = R"(
 		li 		r1,float(%imm%)
 		mtc1	r1,%rs%
 	)";
 
-	std::wstring sraop, subop;
-
-	std::wstring macroText = preprocessMacro(templateLiFloat,immediates);
+	std::string macroText = preprocessMacro(templateLiFloat,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%imm%",		immediates.secondary.expression.toString() },
-			{ L"%rs%",		registers.frs.name },
+			{ "%imm%",		immediates.secondary.expression.toString() },
+			{ "%rs%",		registers.frs.name.string() },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroLi(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* templateLi = LR"(
+	const char* templateLi = R"(
 		.if abs(%imm%) > 0xFFFFFFFF
 			.error "Immediate value too big"
 		.elseif %imm% & ~0xFFFF
@@ -4970,18 +9199,18 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroLi(Parser& parser, MipsRegis
 		}
 	}
 
-	std::wstring macroText = preprocessMacro(templateLi,immediates);
+	std::string macroText = preprocessMacro(templateLi,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%upper%",	(flags & MIPSM_UPPER) ? L"1" : L"0" },
-			{ L"%lower%",	(flags & MIPSM_LOWER) ? L"1" : L"0" },
-			{ L"%rs%",		registers.grs.name },
-			{ L"%imm%",		immediates.secondary.expression.toString() },
+			{ "%upper%",	(flags & MIPSM_UPPER) ? "1" : "0" },
+			{ "%lower%",	(flags & MIPSM_LOWER) ? "1" : "0" },
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%imm%",		immediates.secondary.expression.toString() },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroLoadStore(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* templateLoadStore = LR"(
+	const char* templateLoadStore = R"(
 		.if %imm% & ~0xFFFFFFFF
 			.error "Address too big"
 		.elseif %imm% < 0x8000 || (%imm% & 0xFFFF8000) == 0xFFFF8000
@@ -5000,58 +9229,58 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroLoadStore(Parser& parser, Mi
 		.endif
 	)";
 
-	const wchar_t* op;
+	const char* op;
 	bool isCop = false;
 	switch (flags & (MIPSM_ACCESSMASK|MIPSM_LOAD|MIPSM_STORE))
 	{
-	case MIPSM_LOAD|MIPSM_B:		op = L"lb"; break;
-	case MIPSM_LOAD|MIPSM_BU:		op = L"lbu"; break;
-	case MIPSM_LOAD|MIPSM_HW:		op = L"lh"; break;
-	case MIPSM_LOAD|MIPSM_HWU:		op = L"lhu"; break;
-	case MIPSM_LOAD|MIPSM_W:		op = L"lw"; break;
-	case MIPSM_LOAD|MIPSM_WU:		op = L"lwu"; break;
-	case MIPSM_LOAD|MIPSM_DW:		op = L"ld"; break;
-	case MIPSM_LOAD|MIPSM_LLSCW:	op = L"ll"; break;
-	case MIPSM_LOAD|MIPSM_LLSCDW:	op = L"lld"; break;
-	case MIPSM_LOAD|MIPSM_COP1:		op = L"lwc1"; isCop = true; break;
-	case MIPSM_LOAD|MIPSM_COP2:		op = L"lwc2"; isCop = true; break;
-	case MIPSM_LOAD|MIPSM_DCOP1:	op = L"ldc1"; isCop = true; break;
-	case MIPSM_LOAD|MIPSM_DCOP2:	op = L"ldc2"; isCop = true; break;
-	case MIPSM_STORE|MIPSM_B:		op = L"sb"; break;
-	case MIPSM_STORE|MIPSM_HW:		op = L"sh"; break;
-	case MIPSM_STORE|MIPSM_W:		op = L"sw"; break;
-	case MIPSM_STORE|MIPSM_DW:		op = L"sd"; break;
-	case MIPSM_STORE|MIPSM_LLSCW:	op = L"sc"; break;
-	case MIPSM_STORE|MIPSM_LLSCDW:	op = L"scd"; break;
-	case MIPSM_STORE|MIPSM_COP1:	op = L"swc1"; isCop = true; break;
-	case MIPSM_STORE|MIPSM_COP2:	op = L"swc2"; isCop = true; break;
-	case MIPSM_STORE|MIPSM_DCOP1:	op = L"sdc1"; isCop = true; break;
-	case MIPSM_STORE|MIPSM_DCOP2:	op = L"sdc2"; isCop = true; break;
+	case MIPSM_LOAD|MIPSM_B:		op = "lb"; break;
+	case MIPSM_LOAD|MIPSM_BU:		op = "lbu"; break;
+	case MIPSM_LOAD|MIPSM_HW:		op = "lh"; break;
+	case MIPSM_LOAD|MIPSM_HWU:		op = "lhu"; break;
+	case MIPSM_LOAD|MIPSM_W:		op = "lw"; break;
+	case MIPSM_LOAD|MIPSM_WU:		op = "lwu"; break;
+	case MIPSM_LOAD|MIPSM_DW:		op = "ld"; break;
+	case MIPSM_LOAD|MIPSM_LLSCW:	op = "ll"; break;
+	case MIPSM_LOAD|MIPSM_LLSCDW:	op = "lld"; break;
+	case MIPSM_LOAD|MIPSM_COP1:		op = "lwc1"; isCop = true; break;
+	case MIPSM_LOAD|MIPSM_COP2:		op = "lwc2"; isCop = true; break;
+	case MIPSM_LOAD|MIPSM_DCOP1:	op = "ldc1"; isCop = true; break;
+	case MIPSM_LOAD|MIPSM_DCOP2:	op = "ldc2"; isCop = true; break;
+	case MIPSM_STORE|MIPSM_B:		op = "sb"; break;
+	case MIPSM_STORE|MIPSM_HW:		op = "sh"; break;
+	case MIPSM_STORE|MIPSM_W:		op = "sw"; break;
+	case MIPSM_STORE|MIPSM_DW:		op = "sd"; break;
+	case MIPSM_STORE|MIPSM_LLSCW:	op = "sc"; break;
+	case MIPSM_STORE|MIPSM_LLSCDW:	op = "scd"; break;
+	case MIPSM_STORE|MIPSM_COP1:	op = "swc1"; isCop = true; break;
+	case MIPSM_STORE|MIPSM_COP2:	op = "swc2"; isCop = true; break;
+	case MIPSM_STORE|MIPSM_DCOP1:	op = "sdc1"; isCop = true; break;
+	case MIPSM_STORE|MIPSM_DCOP2:	op = "sdc2"; isCop = true; break;
 	default: return nullptr;
 	}
 
-	std::wstring macroText = preprocessMacro(templateLoadStore,immediates);
+	std::string macroText = preprocessMacro(templateLoadStore,immediates);
 
 	bool store = (flags & MIPSM_STORE) != 0;
 	return createMacro(parser,macroText,flags, {
-			{ L"%upper%",	(flags & MIPSM_UPPER) ? L"1" : L"0" },
-			{ L"%lower%",	(flags & MIPSM_LOWER) ? L"1" : L"0" },
-			{ L"%rs%",		isCop ? registers.frs.name : registers.grs.name },
-			{ L"%temp%",	isCop || store ? L"r1" : registers.grs.name },
-			{ L"%imm%",		immediates.secondary.expression.toString() },
-			{ L"%op%",		op },
+			{ "%upper%",	(flags & MIPSM_UPPER) ? "1" : "0" },
+			{ "%lower%",	(flags & MIPSM_LOWER) ? "1" : "0" },
+			{ "%rs%",		isCop ? registers.frs.name.string() : registers.grs.name.string() },
+			{ "%temp%",	isCop || store ? "r1" : registers.grs.name.string() },
+			{ "%imm%",		immediates.secondary.expression.toString() },
+			{ "%op%",		op },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroLoadUnaligned(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* selectedTemplate;
+	const char* selectedTemplate;
 
-	std::wstring op, size;
+	std::string op, size;
 	int type = flags & MIPSM_ACCESSMASK;
 	if (type == MIPSM_HW || type == MIPSM_HWU)
 	{
-		const wchar_t* templateHalfword = LR"(
+		const char* templateHalfword = R"(
 			.if (%off% < 0x8000) && ((%off%+1) >= 0x8000)
 				.error "Immediate offset too big"
 			.else
@@ -5062,11 +9291,11 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroLoadUnaligned(Parser& parser
 			.endif
 		)";
 
-		op = type == MIPSM_HWU ? L"lbu" : L"lb";
+		op = type == MIPSM_HWU ? "lbu" : "lb";
 		selectedTemplate = templateHalfword;
 	} else if (type == MIPSM_W || type == MIPSM_DW)
 	{
-		const wchar_t* templateWord = LR"(
+		const char* templateWord = R"(
 			.if (%off% < 0x8000) && ((%off%+%size%-1) >= 0x8000)
 				.error "Immediate offset too big"
 			.else
@@ -5077,36 +9306,36 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroLoadUnaligned(Parser& parser
 
 		if (registers.grs.num == registers.grd.num)
 		{
-			Logger::printError(Logger::Error,L"Cannot use same register as source and destination");
-			return ::make_unique<DummyCommand>();
+			Logger::printError(Logger::Error, "Cannot use same register as source and destination");
+			return std::make_unique<DummyCommand>();
 		}
 
-		op = type == MIPSM_W ? L"lw" : L"ld";
-		size = type == MIPSM_W ? L"4" : L"8";
+		op = type == MIPSM_W ? "lw" : "ld";
+		size = type == MIPSM_W ? "4" : "8";
 		selectedTemplate = templateWord;
 	} else {
 		return nullptr;
 	}
 
-	std::wstring macroText = preprocessMacro(selectedTemplate,immediates);
+	std::string macroText = preprocessMacro(selectedTemplate,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%rs%",		registers.grs.name },
-			{ L"%rd%",		registers.grd.name },
-			{ L"%off%",		immediates.primary.expression.toString() },
-			{ L"%op%",		op },
-			{ L"%size%",    size },
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%rd%",		registers.grd.name.string() },
+			{ "%off%",		immediates.primary.expression.toString() },
+			{ "%op%",		op },
+			{ "%size%",    size },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroStoreUnaligned(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* selectedTemplate;
+	const char* selectedTemplate;
 
-	std::wstring op, size;
+	std::string op, size;
 	int type = flags & MIPSM_ACCESSMASK;
 	if (type == MIPSM_HW)
 	{
-		const wchar_t* templateHalfword = LR"(
+		const char* templateHalfword = R"(
 			.if (%off% < 0x8000) && ((%off%+1) >= 0x8000)
 				.error "Immediate offset too big"
 			.else
@@ -5119,7 +9348,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroStoreUnaligned(Parser& parse
 		selectedTemplate = templateHalfword;
 	} else if (type == MIPSM_W || type == MIPSM_DW)
 	{
-		const wchar_t* templateWord = LR"(
+		const char* templateWord = R"(
 			.if (%off% < 0x8000) && ((%off%+%size%-1) >= 0x8000)
 				.error "Immediate offset too big"
 			.else
@@ -5130,30 +9359,30 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroStoreUnaligned(Parser& parse
 
 		if (registers.grs.num == registers.grd.num)
 		{
-			Logger::printError(Logger::Error,L"Cannot use same register as source and destination");
-			return ::make_unique<DummyCommand>();
+			Logger::printError(Logger::Error, "Cannot use same register as source and destination");
+			return std::make_unique<DummyCommand>();
 		}
 
-		op = type == MIPSM_W ? L"sw" : L"sd";
-		size = type == MIPSM_W ? L"4" : L"8";
+		op = type == MIPSM_W ? "sw" : "sd";
+		size = type == MIPSM_W ? "4" : "8";
 		selectedTemplate = templateWord;
 	} else {
 		return nullptr;
 	}
 
-	std::wstring macroText = preprocessMacro(selectedTemplate,immediates);
+	std::string macroText = preprocessMacro(selectedTemplate,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%rs%",		registers.grs.name },
-			{ L"%rd%",		registers.grd.name },
-			{ L"%off%",		immediates.primary.expression.toString() },
-			{ L"%op%",		op },
-			{ L"%size%",	size },
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%rd%",		registers.grd.name.string() },
+			{ "%off%",		immediates.primary.expression.toString() },
+			{ "%op%",		op },
+			{ "%size%",	size },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroBranch(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* selectedTemplate;
+	const char* selectedTemplate;
 
 	int type = flags & MIPSM_CONDITIONMASK;
 
@@ -5166,10 +9395,10 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroBranch(Parser& parser, MipsR
 	bool likely = (flags & MIPSM_LIKELY) != 0;
 	bool revcmp = (flags & MIPSM_REVCMP) != 0;
 
-	std::wstring op;
+	std::string op;
 	if (bne || beq)
 	{
-		const wchar_t* templateNeEq = LR"(
+		const char* templateNeEq = R"(
 			.if %imm% == 0
 				%op%	%rs%,r0,%dest%
 			.else
@@ -5180,12 +9409,12 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroBranch(Parser& parser, MipsR
 
 		selectedTemplate = templateNeEq;
 		if(likely)
-			op = bne ? L"bnel" : L"beql";
+			op = bne ? "bnel" : "beql";
 		else
-			op = bne ? L"bne" : L"beq";
+			op = bne ? "bne" : "beq";
 	} else if (immediate && (beqz || bnez))
 	{
-		const wchar_t* templateImmediate = LR"(
+		const char* templateImmediate = R"(
 			.if %revcmp% && %imm% == 0
 				slt%u% 	r1,r0,%rs%
 			.elseif %revcmp%
@@ -5202,12 +9431,12 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroBranch(Parser& parser, MipsR
 
 		selectedTemplate = templateImmediate;
 		if(likely)
-			op = bnez ? L"bnezl" : L"beqzl";
+			op = bnez ? "bnezl" : "beqzl";
 		else
-			op = bnez ? L"bnez" : L"beqz";
+			op = bnez ? "bnez" : "beqz";
 	} else if (beqz || bnez)
 	{
-		const wchar_t* templateRegister = LR"(
+		const char* templateRegister = R"(
 			.if %revcmp%
 				slt%u%	r1,%rt%,%rs%
 			.else
@@ -5218,28 +9447,28 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroBranch(Parser& parser, MipsR
 
 		selectedTemplate = templateRegister;
 		if(likely)
-			op = bnez ? L"bnezl" : L"beqzl";
+			op = bnez ? "bnezl" : "beqzl";
 		else
-			op = bnez ? L"bnez" : L"beqz";
+			op = bnez ? "bnez" : "beqz";
 	} else {
 		return nullptr;
 	}
 
-	std::wstring macroText = preprocessMacro(selectedTemplate,immediates);
+	std::string macroText = preprocessMacro(selectedTemplate,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%op%",		op },
-			{ L"%u%",		unsigned_ ? L"u" : L""},
-			{ L"%revcmp%",	revcmp ? L"1" : L"0"},
-			{ L"%rs%",		registers.grs.name },
-			{ L"%rt%",		registers.grt.name },
-			{ L"%imm%",		immediates.primary.expression.toString() },
-			{ L"%dest%",	immediates.secondary.expression.toString() },
+			{ "%op%",		op },
+			{ "%u%",		unsigned_ ? "u" : " "},
+			{ "%revcmp%",	revcmp ? "1" : "0"},
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%rt%",		registers.grt.name.string() },
+			{ "%imm%",		immediates.primary.expression.toString() },
+			{ "%dest%",	immediates.secondary.expression.toString() },
 	});
 }
 
 std::unique_ptr<CAssemblerCommand> generateMipsMacroSet(Parser& parser, MipsRegisterData& registers, MipsImmediateData& immediates, int flags)
 {
-	const wchar_t* selectedTemplate;
+	const char* selectedTemplate;
 
 	int type = flags & MIPSM_CONDITIONMASK;
 
@@ -5253,7 +9482,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroSet(Parser& parser, MipsRegi
 
 	if (immediate && (ne || eq))
 	{
-		const wchar_t* templateImmediateEqNe = LR"(
+		const char* templateImmediateEqNe = R"(
 			.if %imm% & ~0xFFFF
 				li		%rd%,%imm%
 				xor		%rd%,%rs%,%rd%
@@ -5270,7 +9499,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroSet(Parser& parser, MipsRegi
 		selectedTemplate = templateImmediateEqNe;
 	} else if (ne || eq)
 	{
-		const wchar_t* templateEqNe = LR"(
+		const char* templateEqNe = R"(
 			xor		%rd%,%rs%,%rt%
 			.if %eq%
 				sltiu	%rd%,%rd%,1
@@ -5282,7 +9511,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroSet(Parser& parser, MipsRegi
 		selectedTemplate = templateEqNe;
 	} else if (immediate && (ge || lt))
 	{
-		const wchar_t* templateImmediateGeLt = LR"(
+		const char* templateImmediateGeLt = R"(
 			.if %revcmp% && %imm% == 0
 				slt%u%	%rd%,r0,%rs%
 			.elseif %revcmp%
@@ -5302,7 +9531,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroSet(Parser& parser, MipsRegi
 		selectedTemplate = templateImmediateGeLt;
 	} else if (ge)
 	{
-		const wchar_t* templateGe = LR"(
+		const char* templateGe = R"(
 			.if %revcmp%
 				slt%u%	%rd%,%rt%,%rs%
 			.else
@@ -5317,16 +9546,16 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroSet(Parser& parser, MipsRegi
 		return nullptr;
 	}
 
-	std::wstring macroText = preprocessMacro(selectedTemplate,immediates);
+	std::string macroText = preprocessMacro(selectedTemplate,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%u%",		unsigned_ ? L"u" : L""},
-			{ L"%eq%",		eq ? L"1" : L"0" },
-			{ L"%ge%",		ge ? L"1" : L"0" },
-			{ L"%revcmp%",	revcmp ? L"1" : L"0" },
-			{ L"%rd%",		registers.grd.name },
-			{ L"%rs%",		registers.grs.name },
-			{ L"%rt%",		registers.grt.name },
-			{ L"%imm%",		immediates.secondary.expression.toString() },
+			{ "%u%",		unsigned_ ? "u" : " "},
+			{ "%eq%",		eq ? "1" : "0" },
+			{ "%ge%",		ge ? "1" : "0" },
+			{ "%revcmp%",	revcmp ? "1" : "0" },
+			{ "%rd%",		registers.grd.name.string() },
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%rt%",		registers.grt.name.string() },
+			{ "%imm%",		immediates.secondary.expression.toString() },
 	});
 }
 
@@ -5336,10 +9565,10 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroRotate(Parser& parser, MipsR
 	bool immediate = (flags & MIPSM_IMM) != 0;
 	bool psp = Mips.GetVersion() == MARCH_PSP;
 
-	const wchar_t* selectedTemplate;
+	const char* selectedTemplate;
 	if (psp && immediate)
 	{
-		const wchar_t* templatePspImmediate = LR"(
+		const char* templatePspImmediate = R"(
 			.if %amount% != 0
 				.if %left%
 					rotr	%rd%,%rs%,-%amount%&31
@@ -5354,7 +9583,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroRotate(Parser& parser, MipsR
 		selectedTemplate = templatePspImmediate;
 	} else if (psp)
 	{
-		const wchar_t* templatePspRegister = LR"(
+		const char* templatePspRegister = R"(
 			.if %left%
 				negu	r1,%rt%
 				rotrv	%rd%,%rs%,r1
@@ -5366,7 +9595,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroRotate(Parser& parser, MipsR
 		selectedTemplate = templatePspRegister;
 	} else if (immediate)
 	{
-		const wchar_t* templateImmediate = LR"(
+		const char* templateImmediate = R"(
 			.if %amount% != 0
 				.if %left%
 					srl	r1,%rs%,-%amount%&31
@@ -5383,7 +9612,7 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroRotate(Parser& parser, MipsR
 
 		selectedTemplate = templateImmediate;
 	} else {
-		const wchar_t* templateRegister = LR"(
+		const char* templateRegister = R"(
 			negu	r1,%rt%
 			.if %left%
 				srlv	r1,%rs%,r1
@@ -5398,13 +9627,13 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroRotate(Parser& parser, MipsR
 		selectedTemplate = templateRegister;
 	}
 
-	std::wstring macroText = preprocessMacro(selectedTemplate,immediates);
+	std::string macroText = preprocessMacro(selectedTemplate,immediates);
 	return createMacro(parser,macroText,flags, {
-			{ L"%left%",	left ? L"1" : L"0" },
-			{ L"%rd%",		registers.grd.name },
-			{ L"%rs%",		registers.grs.name },
-			{ L"%rt%",		registers.grt.name },
-			{ L"%amount%",	immediates.primary.expression.toString() },
+			{ "%left%",	left ? "1" : "0" },
+			{ "%rd%",		registers.grd.name.string() },
+			{ "%rs%",		registers.grs.name.string() },
+			{ "%rt%",		registers.grt.name.string() },
+			{ "%amount%",	immediates.primary.expression.toString() },
 	});
 }
 
@@ -5413,181 +9642,181 @@ std::unique_ptr<CAssemblerCommand> generateMipsMacroRotate(Parser& parser, MipsR
 	I = i2 = 32 bit immediate
 	s,t,d = registers */
 const MipsMacroDefinition mipsMacros[] = {
-	{ L"abs",	L"d,s",		&generateMipsMacroAbs,				MIPSM_W },
-	{ L"dabs",	L"d,s",		&generateMipsMacroAbs,				MIPSM_DW },
+	{ "abs",     "d,s",     &generateMipsMacroAbs,             MIPSM_W },
+	{ "dabs",    "d,s",     &generateMipsMacroAbs,             MIPSM_DW },
 
-	{ L"li",	L"s,I",		&generateMipsMacroLi,				MIPSM_IMM|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"li.u",	L"s,I",		&generateMipsMacroLi,				MIPSM_IMM|MIPSM_UPPER },
-	{ L"li.l",	L"s,I",		&generateMipsMacroLi,				MIPSM_IMM|MIPSM_LOWER },
-	{ L"la",	L"s,I",		&generateMipsMacroLi,				MIPSM_IMM|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"la.u",	L"s,I",		&generateMipsMacroLi,				MIPSM_IMM|MIPSM_UPPER },
-	{ L"la.l",	L"s,I",		&generateMipsMacroLi,				MIPSM_IMM|MIPSM_LOWER },
+	{ "li",      "s,I",     &generateMipsMacroLi,              MIPSM_IMM|MIPSM_UPPER|MIPSM_LOWER },
+	{ "li.u",    "s,I",     &generateMipsMacroLi,              MIPSM_IMM|MIPSM_UPPER },
+	{ "li.l",    "s,I",     &generateMipsMacroLi,              MIPSM_IMM|MIPSM_LOWER },
+	{ "la",      "s,I",     &generateMipsMacroLi,              MIPSM_IMM|MIPSM_UPPER|MIPSM_LOWER },
+	{ "la.u",    "s,I",     &generateMipsMacroLi,              MIPSM_IMM|MIPSM_UPPER },
+	{ "la.l",    "s,I",     &generateMipsMacroLi,              MIPSM_IMM|MIPSM_LOWER },
 
-	{ L"li.s",	L"S,I",		&generateMipsMacroLiFloat,			MIPSM_IMM },
+	{ "li.s",    "S,I",     &generateMipsMacroLiFloat,         MIPSM_IMM },
 
-	{ L"lb",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_B|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lbu",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_BU|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lh",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_HW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lhu",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_HWU|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lw",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_W|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lwu",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_WU|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"ld",    L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"ll",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_LLSCW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lld",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_LLSCDW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lwc1",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"l.s",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"lwc2",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP2|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"ldc1",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"l.d",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"ldc2",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP2|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lb",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_B|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lbu",     "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_BU|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lh",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_HW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lhu",     "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_HWU|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lw",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_W|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lwu",     "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_WU|MIPSM_UPPER|MIPSM_LOWER },
+	{ "ld",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "ll",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_LLSCW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lld",     "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_LLSCDW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lwc1",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "l.s",     "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "lwc2",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP2|MIPSM_UPPER|MIPSM_LOWER },
+	{ "ldc1",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "l.d",     "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "ldc2",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP2|MIPSM_UPPER|MIPSM_LOWER },
 
-	{ L"lb.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_B|MIPSM_UPPER },
-	{ L"lbu.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_BU|MIPSM_UPPER },
-	{ L"lh.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_HW|MIPSM_UPPER },
-	{ L"lhu.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_HWU|MIPSM_UPPER },
-	{ L"lw.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_W|MIPSM_UPPER },
-	{ L"lwu.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_WU|MIPSM_UPPER },
-	{ L"ld.u",  L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DW|MIPSM_UPPER },
-	{ L"ll.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_LLSCW|MIPSM_UPPER },
-	{ L"lld.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_LLSCDW|MIPSM_UPPER },
-	{ L"lwc1.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER },
-	{ L"l.s.u",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER },
-	{ L"lwc2.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP2|MIPSM_UPPER },
-	{ L"ldc1.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER },
-	{ L"l.d.u",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER },
-	{ L"ldc2.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP2|MIPSM_UPPER },
+	{ "lb.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_B|MIPSM_UPPER },
+	{ "lbu.u",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_BU|MIPSM_UPPER },
+	{ "lh.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_HW|MIPSM_UPPER },
+	{ "lhu.u",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_HWU|MIPSM_UPPER },
+	{ "lw.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_W|MIPSM_UPPER },
+	{ "lwu.u",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_WU|MIPSM_UPPER },
+	{ "ld.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DW|MIPSM_UPPER },
+	{ "ll.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_LLSCW|MIPSM_UPPER },
+	{ "lld.u",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_LLSCDW|MIPSM_UPPER },
+	{ "lwc1.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER },
+	{ "l.s.u",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP1|MIPSM_UPPER },
+	{ "lwc2.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP2|MIPSM_UPPER },
+	{ "ldc1.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER },
+	{ "l.d.u",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP1|MIPSM_UPPER },
+	{ "ldc2.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP2|MIPSM_UPPER },
 
-	{ L"lb.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_B|MIPSM_LOWER },
-	{ L"lbu.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_BU|MIPSM_LOWER },
-	{ L"lh.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_HW|MIPSM_LOWER },
-	{ L"lhu.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_HWU|MIPSM_LOWER },
-	{ L"lw.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_W|MIPSM_LOWER },
-	{ L"lwu.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_WU|MIPSM_LOWER },
-	{ L"ld.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DW|MIPSM_LOWER },
-	{ L"ll.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_LLSCW|MIPSM_LOWER },
-	{ L"lld.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_LLSCDW|MIPSM_LOWER },
-	{ L"lwc1.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP1|MIPSM_LOWER },
-	{ L"l.s.l",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP1|MIPSM_LOWER },
-	{ L"lwc2.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_COP2|MIPSM_LOWER },
-	{ L"ldc1.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP1|MIPSM_LOWER },
-	{ L"l.d.l",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP1|MIPSM_LOWER },
-	{ L"ldc2.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_LOAD|MIPSM_DCOP2|MIPSM_LOWER },
+	{ "lb.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_B|MIPSM_LOWER },
+	{ "lbu.l",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_BU|MIPSM_LOWER },
+	{ "lh.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_HW|MIPSM_LOWER },
+	{ "lhu.l",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_HWU|MIPSM_LOWER },
+	{ "lw.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_W|MIPSM_LOWER },
+	{ "lwu.l",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_WU|MIPSM_LOWER },
+	{ "ld.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DW|MIPSM_LOWER },
+	{ "ll.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_LLSCW|MIPSM_LOWER },
+	{ "lld.l",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_LLSCDW|MIPSM_LOWER },
+	{ "lwc1.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP1|MIPSM_LOWER },
+	{ "l.s.l",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP1|MIPSM_LOWER },
+	{ "lwc2.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_COP2|MIPSM_LOWER },
+	{ "ldc1.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP1|MIPSM_LOWER },
+	{ "l.d.l",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP1|MIPSM_LOWER },
+	{ "ldc2.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_LOAD|MIPSM_DCOP2|MIPSM_LOWER },
 
-	{ L"ulh",	L"d,i(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_HW|MIPSM_IMM },
-	{ L"ulh",	L"d,(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_HW },
-	{ L"ulhu",	L"d,i(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_HWU|MIPSM_IMM },
-	{ L"ulhu",	L"d,(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_HWU },
-	{ L"ulw",	L"d,i(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_W|MIPSM_IMM },
-	{ L"ulw",	L"d,(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_W },
-	{ L"uld",	L"d,i(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_DW|MIPSM_IMM },
-	{ L"uld",	L"d,(s)",	&generateMipsMacroLoadUnaligned,	MIPSM_DW },
+	{ "ulh",     "d,i(s)",  &generateMipsMacroLoadUnaligned,   MIPSM_HW|MIPSM_IMM },
+	{ "ulh",     "d,(s)",   &generateMipsMacroLoadUnaligned,   MIPSM_HW },
+	{ "ulhu",    "d,i(s)",  &generateMipsMacroLoadUnaligned,   MIPSM_HWU|MIPSM_IMM },
+	{ "ulhu",    "d,(s)",   &generateMipsMacroLoadUnaligned,   MIPSM_HWU },
+	{ "ulw",     "d,i(s)",  &generateMipsMacroLoadUnaligned,   MIPSM_W|MIPSM_IMM },
+	{ "ulw",     "d,(s)",   &generateMipsMacroLoadUnaligned,   MIPSM_W },
+	{ "uld",     "d,i(s)",  &generateMipsMacroLoadUnaligned,   MIPSM_DW|MIPSM_IMM },
+	{ "uld",     "d,(s)",   &generateMipsMacroLoadUnaligned,   MIPSM_DW },
 
-	{ L"sb",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_B|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"sh",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_HW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"sw",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_W|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"sd",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"sc",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_LLSCW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"scd",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_LLSCDW|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"swc1",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"s.s",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"swc2",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP2|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"sdc1",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"s.d",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
-	{ L"sdc2",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP2|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sb",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_B|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sh",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_HW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sw",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_W|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sd",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sc",      "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_LLSCW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "scd",     "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_LLSCDW|MIPSM_UPPER|MIPSM_LOWER },
+	{ "swc1",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "s.s",     "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "swc2",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP2|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sdc1",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "s.d",     "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER|MIPSM_LOWER },
+	{ "sdc2",    "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP2|MIPSM_UPPER|MIPSM_LOWER },
 
-	{ L"sb.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_B|MIPSM_UPPER },
-	{ L"sh.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_HW|MIPSM_UPPER },
-	{ L"sw.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_W|MIPSM_UPPER },
-	{ L"sd.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DW|MIPSM_UPPER },
-	{ L"sc.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_LLSCW|MIPSM_UPPER },
-	{ L"scd.u",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_LLSCDW|MIPSM_UPPER },
-	{ L"swc1.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER },
-	{ L"s.s.u",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER },
-	{ L"swc2.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP2|MIPSM_UPPER },
-	{ L"sdc1.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER },
-	{ L"s.d.u",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER },
-	{ L"sdc2.u",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP2|MIPSM_UPPER },
+	{ "sb.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_B|MIPSM_UPPER },
+	{ "sh.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_HW|MIPSM_UPPER },
+	{ "sw.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_W|MIPSM_UPPER },
+	{ "sd.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DW|MIPSM_UPPER },
+	{ "sc.u",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_LLSCW|MIPSM_UPPER },
+	{ "scd.u",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_LLSCDW|MIPSM_UPPER },
+	{ "swc1.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER },
+	{ "s.s.u",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP1|MIPSM_UPPER },
+	{ "swc2.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP2|MIPSM_UPPER },
+	{ "sdc1.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER },
+	{ "s.d.u",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP1|MIPSM_UPPER },
+	{ "sdc2.u",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP2|MIPSM_UPPER },
 
-	{ L"sb.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_B|MIPSM_LOWER },
-	{ L"sh.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_HW|MIPSM_LOWER },
-	{ L"sw.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_W|MIPSM_LOWER },
-	{ L"sd.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DW|MIPSM_LOWER },
-	{ L"sc.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_LLSCW|MIPSM_LOWER },
-	{ L"scd.l",	L"s,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_LLSCDW|MIPSM_LOWER },
-	{ L"swc1.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP1|MIPSM_LOWER },
-	{ L"s.s.l",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP1|MIPSM_LOWER },
-	{ L"swc2.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_COP2|MIPSM_LOWER },
-	{ L"sdc1.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP1|MIPSM_LOWER },
-	{ L"s.d.l",	L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP1|MIPSM_LOWER },
-	{ L"sdc2.l",L"S,I",		&generateMipsMacroLoadStore,		MIPSM_STORE|MIPSM_DCOP2|MIPSM_LOWER },
+	{ "sb.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_B|MIPSM_LOWER },
+	{ "sh.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_HW|MIPSM_LOWER },
+	{ "sw.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_W|MIPSM_LOWER },
+	{ "sd.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DW|MIPSM_LOWER },
+	{ "sc.l",    "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_LLSCW|MIPSM_LOWER },
+	{ "scd.l",   "s,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_LLSCDW|MIPSM_LOWER },
+	{ "swc1.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP1|MIPSM_LOWER },
+	{ "s.s.l",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP1|MIPSM_LOWER },
+	{ "swc2.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_COP2|MIPSM_LOWER },
+	{ "sdc1.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP1|MIPSM_LOWER },
+	{ "s.d.l",   "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP1|MIPSM_LOWER },
+	{ "sdc2.l",  "S,I",     &generateMipsMacroLoadStore,       MIPSM_STORE|MIPSM_DCOP2|MIPSM_LOWER },
 
-	{ L"ush",	L"d,i(s)",	&generateMipsMacroStoreUnaligned,	MIPSM_HW|MIPSM_IMM },
-	{ L"ush",	L"d,(s)",	&generateMipsMacroStoreUnaligned,	MIPSM_HW },
-	{ L"usw",	L"d,i(s)",	&generateMipsMacroStoreUnaligned,	MIPSM_W|MIPSM_IMM },
-	{ L"usw",	L"d,(s)",	&generateMipsMacroStoreUnaligned,	MIPSM_W },
-	{ L"usd",	L"d,i(s)",	&generateMipsMacroStoreUnaligned,	MIPSM_DW|MIPSM_IMM },
-	{ L"usd",	L"d,(s)",	&generateMipsMacroStoreUnaligned,	MIPSM_DW },
+	{ "ush",     "d,i(s)",  &generateMipsMacroStoreUnaligned,  MIPSM_HW|MIPSM_IMM },
+	{ "ush",     "d,(s)",   &generateMipsMacroStoreUnaligned,  MIPSM_HW },
+	{ "usw",     "d,i(s)",  &generateMipsMacroStoreUnaligned,  MIPSM_W|MIPSM_IMM },
+	{ "usw",     "d,(s)",   &generateMipsMacroStoreUnaligned,  MIPSM_W },
+	{ "usd",     "d,i(s)",  &generateMipsMacroStoreUnaligned,  MIPSM_DW|MIPSM_IMM },
+	{ "usd",     "d,(s)",   &generateMipsMacroStoreUnaligned,  MIPSM_DW },
 
-	{ L"blt",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_DONTWARNDELAYSLOT },
-	{ L"blt",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bgt",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bgt",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bltu",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bltu",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bgtu",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bgtu",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bge",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bge",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
-	{ L"ble",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"ble",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bgeu",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bgeu",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bleu",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bleu",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bne",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_NE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
-	{ L"beq",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_EQ|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
-	{ L"bltl",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bltl",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgtl",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgtl",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LT|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bltul",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bltul",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgtul",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgtul",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_LTU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgel",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgel",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"blel",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"blel",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GE|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgeul",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bgeul",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bleul",	L"s,t,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bleul",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_GEU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"bnel",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_NE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
-	{ L"beql",	L"s,i,I",	&generateMipsMacroBranch,			MIPSM_EQ|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "blt",     "s,t,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_DONTWARNDELAYSLOT },
+	{ "blt",     "s,i,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
+	{ "bgt",     "s,t,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bgt",     "s,i,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bltu",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_DONTWARNDELAYSLOT },
+	{ "bltu",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
+	{ "bgtu",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bgtu",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bge",     "s,t,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_DONTWARNDELAYSLOT },
+	{ "bge",     "s,i,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
+	{ "ble",     "s,t,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "ble",     "s,i,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bgeu",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_DONTWARNDELAYSLOT },
+	{ "bgeu",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
+	{ "bleu",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bleu",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT },
+	{ "bne",     "s,i,I",   &generateMipsMacroBranch,          MIPSM_NE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
+	{ "beq",     "s,i,I",   &generateMipsMacroBranch,          MIPSM_EQ|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT },
+	{ "bltl",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bltl",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgtl",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgtl",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_LT|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bltul",   "s,t,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bltul",   "s,i,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgtul",   "s,t,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgtul",   "s,i,I",   &generateMipsMacroBranch,          MIPSM_LTU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgel",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgel",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "blel",    "s,t,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "blel",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_GE|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgeul",   "s,t,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bgeul",   "s,i,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bleul",   "s,t,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bleul",   "s,i,I",   &generateMipsMacroBranch,          MIPSM_GEU|MIPSM_IMM|MIPSM_REVCMP|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "bnel",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_NE|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
+	{ "beql",    "s,i,I",   &generateMipsMacroBranch,          MIPSM_EQ|MIPSM_IMM|MIPSM_DONTWARNDELAYSLOT|MIPSM_LIKELY },
 
-	{ L"slt",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_LT|MIPSM_IMM },
-	{ L"sltu",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_LTU|MIPSM_IMM },
-	{ L"sgt",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_LT|MIPSM_IMM|MIPSM_REVCMP },
-	{ L"sgtu",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_LTU|MIPSM_IMM|MIPSM_REVCMP },
-	{ L"sge",	L"d,s,t",	&generateMipsMacroSet,				MIPSM_GE },
-	{ L"sge",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_GE|MIPSM_IMM },
-	{ L"sle",	L"d,s,t",	&generateMipsMacroSet,				MIPSM_GE|MIPSM_REVCMP },
-	{ L"sle",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_GE|MIPSM_IMM|MIPSM_REVCMP },
-	{ L"sgeu",	L"d,s,t",	&generateMipsMacroSet,				MIPSM_GEU },
-	{ L"sgeu",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_GEU|MIPSM_IMM },
-	{ L"sleu",	L"d,s,t",	&generateMipsMacroSet,				MIPSM_GEU|MIPSM_REVCMP },
-	{ L"sleu",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_GEU|MIPSM_IMM|MIPSM_REVCMP },
-	{ L"sne",	L"d,s,t",	&generateMipsMacroSet,				MIPSM_NE },
-	{ L"sne",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_NE|MIPSM_IMM },
-	{ L"seq",	L"d,s,t",	&generateMipsMacroSet,				MIPSM_EQ },
-	{ L"seq",	L"d,s,I",	&generateMipsMacroSet,				MIPSM_EQ|MIPSM_IMM },
+	{ "slt",     "d,s,I",   &generateMipsMacroSet,             MIPSM_LT|MIPSM_IMM },
+	{ "sltu",    "d,s,I",   &generateMipsMacroSet,             MIPSM_LTU|MIPSM_IMM },
+	{ "sgt",     "d,s,I",   &generateMipsMacroSet,             MIPSM_LT|MIPSM_IMM|MIPSM_REVCMP },
+	{ "sgtu",    "d,s,I",   &generateMipsMacroSet,             MIPSM_LTU|MIPSM_IMM|MIPSM_REVCMP },
+	{ "sge",     "d,s,t",   &generateMipsMacroSet,             MIPSM_GE },
+	{ "sge",     "d,s,I",   &generateMipsMacroSet,             MIPSM_GE|MIPSM_IMM },
+	{ "sle",     "d,s,t",   &generateMipsMacroSet,             MIPSM_GE|MIPSM_REVCMP },
+	{ "sle",     "d,s,I",   &generateMipsMacroSet,             MIPSM_GE|MIPSM_IMM|MIPSM_REVCMP },
+	{ "sgeu",    "d,s,t",   &generateMipsMacroSet,             MIPSM_GEU },
+	{ "sgeu",    "d,s,I",   &generateMipsMacroSet,             MIPSM_GEU|MIPSM_IMM },
+	{ "sleu",    "d,s,t",   &generateMipsMacroSet,             MIPSM_GEU|MIPSM_REVCMP },
+	{ "sleu",    "d,s,I",   &generateMipsMacroSet,             MIPSM_GEU|MIPSM_IMM|MIPSM_REVCMP },
+	{ "sne",     "d,s,t",   &generateMipsMacroSet,             MIPSM_NE },
+	{ "sne",     "d,s,I",   &generateMipsMacroSet,             MIPSM_NE|MIPSM_IMM },
+	{ "seq",     "d,s,t",   &generateMipsMacroSet,             MIPSM_EQ },
+	{ "seq",     "d,s,I",   &generateMipsMacroSet,             MIPSM_EQ|MIPSM_IMM },
 
-	{ L"rol",	L"d,s,t",	&generateMipsMacroRotate,			MIPSM_LEFT },
-	{ L"rol",	L"d,s,i",	&generateMipsMacroRotate,			MIPSM_LEFT|MIPSM_IMM },
-	{ L"ror",	L"d,s,t",	&generateMipsMacroRotate,			MIPSM_RIGHT },
-	{ L"ror",	L"d,s,i",	&generateMipsMacroRotate,			MIPSM_RIGHT|MIPSM_IMM },
+	{ "rol",     "d,s,t",   &generateMipsMacroRotate,          MIPSM_LEFT },
+	{ "rol",     "d,s,i",   &generateMipsMacroRotate,          MIPSM_LEFT|MIPSM_IMM },
+	{ "ror",     "d,s,t",   &generateMipsMacroRotate,          MIPSM_RIGHT },
+	{ "ror",     "d,s,i",   &generateMipsMacroRotate,          MIPSM_RIGHT|MIPSM_IMM },
 
-	{ nullptr,	nullptr,	nullptr,							0 }
+	{ nullptr,   nullptr,   nullptr,                           0 }
 };
 
 // file: Archs/MIPS/MipsOpcodes.cpp
@@ -6390,7 +10619,7 @@ const tMipsOpcode MipsOpcodes[] = {
 //     | VMMUL |     V(H)TFM2/3/4      | VMSCL |   *1  |  ---  |VF6-1.1|
 //     |-------|-------|-------|-------|-------|-------|-------|-------|
 //		*1: vcrsp.t/vqmul.q
-	{ "vmmul.S",	"md,ms,mt",		MIPS_VFPU6(0),					MA_PSP,	MO_VFPU|MO_TRANSPOSE_VS },
+	{ "vmmul.S",	"md,ms,mt",		MIPS_VFPU6(0),					MA_PSP,	MO_VFPU|MO_VFPU_TRANSPOSE_VS },
 	{ "vtfm2.p",	"vd,ms,vt",		MIPS_VFPU6(1)|MIPS_VFPUSIZE(1),	MA_PSP,	MO_VFPU|MO_VFPU_PAIR },
 	{ "vhtfm2.p",	"vd,ms,vt",		MIPS_VFPU6(2)|MIPS_VFPUSIZE(1),	MA_PSP,	MO_VFPU|MO_VFPU_PAIR },
 	{ "vtfm3.t",	"vd,ms,vt",		MIPS_VFPU6(2)|MIPS_VFPUSIZE(2),	MA_PSP,	MO_VFPU|MO_VFPU_TRIPLE },
@@ -6437,97 +10666,97 @@ const tMipsOpcode MipsOpcodes[] = {
 // 111 | VEXTT | VEXTQ | VEXTN |  ---  | VINST | VINSQ | VINSN | VNULL | 38..3F
 //  hi |-------|-------|-------|-------|-------|-------|-------|-------|
 	{ "vmulf",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x00),		MA_RSP,		0 },
-	{ "vmulf",	"Rs,RtRe",		MIPS_RSP_COP2(0x00),		MA_RSP,		MO_RSPVRSD },
+	{ "vmulf",	"Rs,RtRe",		MIPS_RSP_COP2(0x00),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmulu",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x01),		MA_RSP,		0 },
-	{ "vmulu",	"Rs,RtRe",		MIPS_RSP_COP2(0x01),		MA_RSP,		MO_RSPVRSD },
+	{ "vmulu",	"Rs,RtRe",		MIPS_RSP_COP2(0x01),		MA_RSP,		MO_RSP_VRSD },
 	{ "vrndp",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x02),		MA_RSP,		0 },
-	{ "vrndp",	"Rs,RtRe",		MIPS_RSP_COP2(0x02),		MA_RSP,		MO_RSPVRSD },
+	{ "vrndp",	"Rs,RtRe",		MIPS_RSP_COP2(0x02),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmulq",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x03),		MA_RSP,		0 },
-	{ "vmulq",	"Rs,RtRe",		MIPS_RSP_COP2(0x03),		MA_RSP,		MO_RSPVRSD },
+	{ "vmulq",	"Rs,RtRe",		MIPS_RSP_COP2(0x03),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmudl",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x04),		MA_RSP,		0 },
-	{ "vmudl",	"Rs,RtRe",		MIPS_RSP_COP2(0x04),		MA_RSP,		MO_RSPVRSD },
+	{ "vmudl",	"Rs,RtRe",		MIPS_RSP_COP2(0x04),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmudm",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x05),		MA_RSP,		0 },
-	{ "vmudm",	"Rs,RtRe",		MIPS_RSP_COP2(0x05),		MA_RSP,		MO_RSPVRSD },
+	{ "vmudm",	"Rs,RtRe",		MIPS_RSP_COP2(0x05),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmudn",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x06),		MA_RSP,		0 },
-	{ "vmudn",	"Rs,RtRe",		MIPS_RSP_COP2(0x06),		MA_RSP,		MO_RSPVRSD },
+	{ "vmudn",	"Rs,RtRe",		MIPS_RSP_COP2(0x06),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmudh",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x07),		MA_RSP,		0 },
-	{ "vmudh",	"Rs,RtRe",		MIPS_RSP_COP2(0x07),		MA_RSP,		MO_RSPVRSD },
+	{ "vmudh",	"Rs,RtRe",		MIPS_RSP_COP2(0x07),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmacf",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x08),		MA_RSP,		0 },
-	{ "vmacf",	"Rs,RtRe",		MIPS_RSP_COP2(0x08),		MA_RSP,		MO_RSPVRSD },
+	{ "vmacf",	"Rs,RtRe",		MIPS_RSP_COP2(0x08),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmacu",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x09),		MA_RSP,		0 },
-	{ "vmacu",	"Rs,RtRe",		MIPS_RSP_COP2(0x09),		MA_RSP,		MO_RSPVRSD },
+	{ "vmacu",	"Rs,RtRe",		MIPS_RSP_COP2(0x09),		MA_RSP,		MO_RSP_VRSD },
 	{ "vrndn",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x0a),		MA_RSP,		0 },
-	{ "vrndn",	"Rs,RtRe",		MIPS_RSP_COP2(0x0a),		MA_RSP,		MO_RSPVRSD },
+	{ "vrndn",	"Rs,RtRe",		MIPS_RSP_COP2(0x0a),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmacq",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x0b),		MA_RSP,		0 },
-	{ "vmacq",	"Rs,RtRe",		MIPS_RSP_COP2(0x0b),		MA_RSP,		MO_RSPVRSD },
+	{ "vmacq",	"Rs,RtRe",		MIPS_RSP_COP2(0x0b),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmadl",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x0c),		MA_RSP,		0 },
-	{ "vmadl",	"Rs,RtRe",		MIPS_RSP_COP2(0x0c),		MA_RSP,		MO_RSPVRSD },
+	{ "vmadl",	"Rs,RtRe",		MIPS_RSP_COP2(0x0c),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmadm",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x0d),		MA_RSP,		0 },
-	{ "vmadm",	"Rs,RtRe",		MIPS_RSP_COP2(0x0d),		MA_RSP,		MO_RSPVRSD },
+	{ "vmadm",	"Rs,RtRe",		MIPS_RSP_COP2(0x0d),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmadn",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x0e),		MA_RSP,		0 },
-	{ "vmadn",	"Rs,RtRe",		MIPS_RSP_COP2(0x0e),		MA_RSP,		MO_RSPVRSD },
+	{ "vmadn",	"Rs,RtRe",		MIPS_RSP_COP2(0x0e),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmadh",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x0f),		MA_RSP,		0 },
-	{ "vmadh",	"Rs,RtRe",		MIPS_RSP_COP2(0x0f),		MA_RSP,		MO_RSPVRSD },
+	{ "vmadh",	"Rs,RtRe",		MIPS_RSP_COP2(0x0f),		MA_RSP,		MO_RSP_VRSD },
 	{ "vadd",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x10),		MA_RSP,		0 },
-	{ "vadd",	"Rs,RtRe",		MIPS_RSP_COP2(0x10),		MA_RSP,		MO_RSPVRSD },
+	{ "vadd",	"Rs,RtRe",		MIPS_RSP_COP2(0x10),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsub",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x11),		MA_RSP,		0 },
-	{ "vsub",	"Rs,RtRe",		MIPS_RSP_COP2(0x11),		MA_RSP,		MO_RSPVRSD },
+	{ "vsub",	"Rs,RtRe",		MIPS_RSP_COP2(0x11),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsut",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x12),		MA_RSP,		0 },
-	{ "vsut",	"Rs,RtRe",		MIPS_RSP_COP2(0x12),		MA_RSP,		MO_RSPVRSD },
+	{ "vsut",	"Rs,RtRe",		MIPS_RSP_COP2(0x12),		MA_RSP,		MO_RSP_VRSD },
 	{ "vabs",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x13),		MA_RSP,		0 },
-	{ "vabs",	"Rs,RtRe",		MIPS_RSP_COP2(0x13),		MA_RSP,		MO_RSPVRSD },
+	{ "vabs",	"Rs,RtRe",		MIPS_RSP_COP2(0x13),		MA_RSP,		MO_RSP_VRSD },
 	{ "vaddc",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x14),		MA_RSP,		0 },
-	{ "vaddc",	"Rs,RtRe",		MIPS_RSP_COP2(0x14),		MA_RSP,		MO_RSPVRSD },
+	{ "vaddc",	"Rs,RtRe",		MIPS_RSP_COP2(0x14),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsubc",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x15),		MA_RSP,		0 },
-	{ "vsubc",	"Rs,RtRe",		MIPS_RSP_COP2(0x15),		MA_RSP,		MO_RSPVRSD },
+	{ "vsubc",	"Rs,RtRe",		MIPS_RSP_COP2(0x15),		MA_RSP,		MO_RSP_VRSD },
 	{ "vaddb",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x16),		MA_RSP,		0 },
-	{ "vaddb",	"Rs,RtRe",		MIPS_RSP_COP2(0x16),		MA_RSP,		MO_RSPVRSD },
+	{ "vaddb",	"Rs,RtRe",		MIPS_RSP_COP2(0x16),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsubb",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x17),		MA_RSP,		0 },
-	{ "vsubb",	"Rs,RtRe",		MIPS_RSP_COP2(0x17),		MA_RSP,		MO_RSPVRSD },
+	{ "vsubb",	"Rs,RtRe",		MIPS_RSP_COP2(0x17),		MA_RSP,		MO_RSP_VRSD },
 	{ "vaccb",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x18),		MA_RSP,		0 },
-	{ "vaccb",	"Rs,RtRe",		MIPS_RSP_COP2(0x18),		MA_RSP,		MO_RSPVRSD },
+	{ "vaccb",	"Rs,RtRe",		MIPS_RSP_COP2(0x18),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsucb",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x19),		MA_RSP,		0 },
-	{ "vsucb",	"Rs,RtRe",		MIPS_RSP_COP2(0x19),		MA_RSP,		MO_RSPVRSD },
+	{ "vsucb",	"Rs,RtRe",		MIPS_RSP_COP2(0x19),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsad",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x1a),		MA_RSP,		0 },
-	{ "vsad",	"Rs,RtRe",		MIPS_RSP_COP2(0x1a),		MA_RSP,		MO_RSPVRSD },
+	{ "vsad",	"Rs,RtRe",		MIPS_RSP_COP2(0x1a),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsac",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x1b),		MA_RSP,		0 },
-	{ "vsac",	"Rs,RtRe",		MIPS_RSP_COP2(0x1b),		MA_RSP,		MO_RSPVRSD },
+	{ "vsac",	"Rs,RtRe",		MIPS_RSP_COP2(0x1b),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsum",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x1c),		MA_RSP,		0 },
-	{ "vsum",	"Rs,RtRe",		MIPS_RSP_COP2(0x1c),		MA_RSP,		MO_RSPVRSD },
+	{ "vsum",	"Rs,RtRe",		MIPS_RSP_COP2(0x1c),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsar",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x1d),		MA_RSP,		0 },
-	{ "vsar",	"Rs,RtRe",		MIPS_RSP_COP2(0x1d),		MA_RSP,		MO_RSPVRSD },
+	{ "vsar",	"Rs,RtRe",		MIPS_RSP_COP2(0x1d),		MA_RSP,		MO_RSP_VRSD },
 	{ "vacc",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x1e),		MA_RSP,		0 },
-	{ "vacc",	"Rs,RtRe",		MIPS_RSP_COP2(0x1e),		MA_RSP,		MO_RSPVRSD },
+	{ "vacc",	"Rs,RtRe",		MIPS_RSP_COP2(0x1e),		MA_RSP,		MO_RSP_VRSD },
 	{ "vsuc",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x1f),		MA_RSP,		0 },
-	{ "vsuc",	"Rs,RtRe",		MIPS_RSP_COP2(0x1f),		MA_RSP,		MO_RSPVRSD },
+	{ "vsuc",	"Rs,RtRe",		MIPS_RSP_COP2(0x1f),		MA_RSP,		MO_RSP_VRSD },
 	{ "vlt",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x20),		MA_RSP,		0 },
-	{ "vlt",	"Rs,RtRe",		MIPS_RSP_COP2(0x20),		MA_RSP,		MO_RSPVRSD },
+	{ "vlt",	"Rs,RtRe",		MIPS_RSP_COP2(0x20),		MA_RSP,		MO_RSP_VRSD },
 	{ "veq",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x21),		MA_RSP,		0 },
-	{ "veq",	"Rs,RtRe",		MIPS_RSP_COP2(0x21),		MA_RSP,		MO_RSPVRSD },
+	{ "veq",	"Rs,RtRe",		MIPS_RSP_COP2(0x21),		MA_RSP,		MO_RSP_VRSD },
 	{ "vne",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x22),		MA_RSP,		0 },
-	{ "vne",	"Rs,RtRe",		MIPS_RSP_COP2(0x22),		MA_RSP,		MO_RSPVRSD },
+	{ "vne",	"Rs,RtRe",		MIPS_RSP_COP2(0x22),		MA_RSP,		MO_RSP_VRSD },
 	{ "vge",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x23),		MA_RSP,		0 },
-	{ "vge",	"Rs,RtRe",		MIPS_RSP_COP2(0x23),		MA_RSP,		MO_RSPVRSD },
+	{ "vge",	"Rs,RtRe",		MIPS_RSP_COP2(0x23),		MA_RSP,		MO_RSP_VRSD },
 	{ "vcl",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x24),		MA_RSP,		0 },
-	{ "vcl",	"Rs,RtRe",		MIPS_RSP_COP2(0x24),		MA_RSP,		MO_RSPVRSD },
+	{ "vcl",	"Rs,RtRe",		MIPS_RSP_COP2(0x24),		MA_RSP,		MO_RSP_VRSD },
 	{ "vch",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x25),		MA_RSP,		0 },
-	{ "vch",	"Rs,RtRe",		MIPS_RSP_COP2(0x25),		MA_RSP,		MO_RSPVRSD },
+	{ "vch",	"Rs,RtRe",		MIPS_RSP_COP2(0x25),		MA_RSP,		MO_RSP_VRSD },
 	{ "vcr",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x26),		MA_RSP,		0 },
-	{ "vcr",	"Rs,RtRe",		MIPS_RSP_COP2(0x26),		MA_RSP,		MO_RSPVRSD },
+	{ "vcr",	"Rs,RtRe",		MIPS_RSP_COP2(0x26),		MA_RSP,		MO_RSP_VRSD },
 	{ "vmrg",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x27),		MA_RSP,		0 },
-	{ "vmrg",	"Rs,RtRe",		MIPS_RSP_COP2(0x27),		MA_RSP,		MO_RSPVRSD },
+	{ "vmrg",	"Rs,RtRe",		MIPS_RSP_COP2(0x27),		MA_RSP,		MO_RSP_VRSD },
 	{ "vand",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x28),		MA_RSP,		0 },
-	{ "vand",	"Rs,RtRe",		MIPS_RSP_COP2(0x28),		MA_RSP,		MO_RSPVRSD },
+	{ "vand",	"Rs,RtRe",		MIPS_RSP_COP2(0x28),		MA_RSP,		MO_RSP_VRSD },
 	{ "vnand",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x29),		MA_RSP,		0 },
-	{ "vnand",	"Rs,RtRe",		MIPS_RSP_COP2(0x29),		MA_RSP,		MO_RSPVRSD },
+	{ "vnand",	"Rs,RtRe",		MIPS_RSP_COP2(0x29),		MA_RSP,		MO_RSP_VRSD },
 	{ "vor",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x2a),		MA_RSP,		0 },
-	{ "vor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2a),		MA_RSP,		MO_RSPVRSD },
+	{ "vor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2a),		MA_RSP,		MO_RSP_VRSD },
 	{ "vnor",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x2b),		MA_RSP,		0 },
-	{ "vnor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2b),		MA_RSP,		MO_RSPVRSD },
+	{ "vnor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2b),		MA_RSP,		MO_RSP_VRSD },
 	{ "vxor",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x2c),		MA_RSP,		0 },
-	{ "vxor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2c),		MA_RSP,		MO_RSPVRSD },
+	{ "vxor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2c),		MA_RSP,		MO_RSP_VRSD },
 	{ "vnxor",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x2d),		MA_RSP,		0 },
-	{ "vnxor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2d),		MA_RSP,		MO_RSPVRSD },
+	{ "vnxor",	"Rs,RtRe",		MIPS_RSP_COP2(0x2d),		MA_RSP,		MO_RSP_VRSD },
 	{ "vrcp",	"RdRm,RtRl",	MIPS_RSP_COP2(0x30),		MA_RSP,		0 },
 	{ "vrcpl",	"RdRm,RtRl",	MIPS_RSP_COP2(0x31),		MA_RSP,		0 },
 	{ "vrcph",	"RdRm,RtRl",	MIPS_RSP_COP2(0x32),		MA_RSP,		0 },
@@ -6537,17 +10766,17 @@ const tMipsOpcode MipsOpcodes[] = {
 	{ "vrsqh",	"RdRm,RtRl",	MIPS_RSP_COP2(0x36),		MA_RSP,		0 },
 	{ "vnop",	"",				MIPS_RSP_COP2(0x37),		MA_RSP,		0 },
 	{ "vextt",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x38),		MA_RSP,		0 },
-	{ "vextt",	"Rs,RtRe",		MIPS_RSP_COP2(0x38),		MA_RSP,		MO_RSPVRSD },
+	{ "vextt",	"Rs,RtRe",		MIPS_RSP_COP2(0x38),		MA_RSP,		MO_RSP_VRSD },
 	{ "vextq",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x39),		MA_RSP,		0 },
-	{ "vextq",	"Rs,RtRe",		MIPS_RSP_COP2(0x39),		MA_RSP,		MO_RSPVRSD },
+	{ "vextq",	"Rs,RtRe",		MIPS_RSP_COP2(0x39),		MA_RSP,		MO_RSP_VRSD },
 	{ "vextn",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x3a),		MA_RSP,		0 },
-	{ "vextn",	"Rs,RtRe",		MIPS_RSP_COP2(0x3a),		MA_RSP,		MO_RSPVRSD },
+	{ "vextn",	"Rs,RtRe",		MIPS_RSP_COP2(0x3a),		MA_RSP,		MO_RSP_VRSD },
 	{ "vinst",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x3c),		MA_RSP,		0 },
-	{ "vinst",	"Rs,RtRe",		MIPS_RSP_COP2(0x3c),		MA_RSP,		MO_RSPVRSD },
+	{ "vinst",	"Rs,RtRe",		MIPS_RSP_COP2(0x3c),		MA_RSP,		MO_RSP_VRSD },
 	{ "vinsq",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x3d),		MA_RSP,		0 },
-	{ "vinsq",	"Rs,RtRe",		MIPS_RSP_COP2(0x3d),		MA_RSP,		MO_RSPVRSD },
+	{ "vinsq",	"Rs,RtRe",		MIPS_RSP_COP2(0x3d),		MA_RSP,		MO_RSP_VRSD },
 	{ "vinsn",	"Rd,Rs,RtRe",	MIPS_RSP_COP2(0x3e),		MA_RSP,		0 },
-	{ "vinsn",	"Rs,RtRe",		MIPS_RSP_COP2(0x3e),		MA_RSP,		MO_RSPVRSD },
+	{ "vinsn",	"Rs,RtRe",		MIPS_RSP_COP2(0x3e),		MA_RSP,		MO_RSP_VRSD },
 	{ "vnull",	"",				MIPS_RSP_COP2(0x3f),		MA_RSP,		0 },
 
 //     31---------26--------------------15-------11--------------------0
@@ -6563,8 +10792,8 @@ const tMipsOpcode MipsOpcodes[] = {
 	{"lbv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x00),		MA_RSP,		0 },
 	{"lsv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x01),		MA_RSP,		MO_RSP_HWOFFSET },
 	{"lsv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x01),		MA_RSP,		MO_RSP_HWOFFSET },
-	{"llv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x02),		MA_RSP,		MO_RSP_WOFFSET  },
-	{"llv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x02),		MA_RSP,		MO_RSP_WOFFSET  },
+	{"llv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x02),		MA_RSP,		MO_RSP_WOFFSET },
+	{"llv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x02),		MA_RSP,		MO_RSP_WOFFSET },
 	{"ldv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x03),		MA_RSP,		MO_RSP_DWOFFSET },
 	{"ldv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x03),		MA_RSP,		MO_RSP_DWOFFSET },
 	{"lqv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x04),		MA_RSP,		MO_RSP_QWOFFSET },
@@ -6579,8 +10808,6 @@ const tMipsOpcode MipsOpcodes[] = {
 	{"lhv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x08),		MA_RSP,		MO_RSP_QWOFFSET },
 	{"lfv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x09),		MA_RSP,		MO_RSP_QWOFFSET },
 	{"lfv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x09),		MA_RSP,		MO_RSP_QWOFFSET },
-	{"lwv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x0a),		MA_RSP,		MO_RSP_QWOFFSET },
-	{"lwv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x0a),		MA_RSP,		MO_RSP_QWOFFSET },
 	{"ltv",		"RtRo,i7(s)",	MIPS_RSP_LWC2(0x0b),		MA_RSP,		MO_RSP_QWOFFSET },
 	{"ltv",		"RtRo,(s)",		MIPS_RSP_LWC2(0x0b),		MA_RSP,		MO_RSP_QWOFFSET },
 
@@ -6636,366 +10863,154 @@ const MipsArchDefinition mipsArchs[] = {
 	{ "Invalid",	0,									0,			0 },
 };
 
-// file: Parser/ExpressionParser.h
-
-Expression parseExpression(Tokenizer& tokenizer, bool inUnknownOrFalseBlock);
-void allowFunctionCallExpression(bool allow);
-
-// file: Archs/MIPS/PsxRelocator.h
-
-enum class PsxRelocationType { WordLiteral, UpperImmediate, LowerImmediate, FunctionCall };
-enum class PsxRelocationRefType { SymblId, SegmentOffset };
-
-struct PsxRelocation
-{
-	PsxRelocationType type;
-	PsxRelocationRefType refType;
-	int segmentOffset;
-	int referenceId;
-	int referencePos;
-	int relativeOffset;
-	int filePos;
-};
-
-struct PsxSegment
-{
-	std::wstring name;
-	int id;
-	ByteArray data;
-	std::vector<PsxRelocation> relocations;
-};
-
-
-enum class PsxSymbolType { Internal, InternalID, External, BSS, Function };
-
-struct PsxSymbol
-{
-	PsxSymbolType type;
-	std::wstring name;
-	int segment;
-	int offset;
-	int id;
-	int size;
-	std::shared_ptr<Label> label;
-};
-
-struct PsxRelocatorFile
-{
-	std::wstring name;
-	std::vector<PsxSegment> segments;
-	std::vector<PsxSymbol> symbols;
-};
-
-class PsxRelocator
-{
-public:
-	bool init(const std::wstring& inputName);
-	bool relocate(int& memoryAddress);
-	bool hasDataChanged() { return dataChanged; };
-	const ByteArray& getData() const { return outputData; };
-	void writeSymbols(SymbolData& symData) const;
-private:
-	size_t loadString(ByteArray& data, size_t pos, std::wstring& dest);
-	bool parseObject(ByteArray data, PsxRelocatorFile& dest);
-	bool relocateFile(PsxRelocatorFile& file, int& relocationAddress);
-
-	ByteArray outputData;
-	std::vector<PsxRelocatorFile> files;
-	MipsElfRelocator* reloc;
-	bool dataChanged;
-};
-
-class DirectivePsxObjImport: public CAssemblerCommand
-{
-public:
-	DirectivePsxObjImport(const std::wstring& fileName);
-	~DirectivePsxObjImport() { };
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const { };
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	PsxRelocator rel;
-};
-
-// file: Commands/CDirectiveFile.h
-
-class GenericAssemblerFile;
-
-class CDirectiveFile: public CAssemblerCommand
-{
-public:
-	enum class Type { Invalid, Open, Create, Copy, Close };
-
-	CDirectiveFile();
-	void initOpen(const std::wstring& fileName, int64_t memory);
-	void initCreate(const std::wstring& fileName, int64_t memory);
-	void initCopy(const std::wstring& inputName, const std::wstring& outputName, int64_t memory);
-	void initClose();
-
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	Type type;
-	int64_t virtualAddress;
-	std::shared_ptr<GenericAssemblerFile> file;
-	std::shared_ptr<AssemblerFile> closeFile;
-};
-
-class CDirectivePosition: public CAssemblerCommand
-{
-public:
-	enum Type { Physical, Virtual };
-	CDirectivePosition(Expression value, Type type);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const { };
-private:
-	void exec() const;
-	Expression expression;
-	Type type;
-	int64_t position;
-	int64_t virtualAddress;
-};
-
-class CDirectiveIncbin: public CAssemblerCommand
-{
-public:
-	CDirectiveIncbin(const std::wstring& fileName);
-	void setStart(Expression& exp) { startExpression = exp; };
-	void setSize(Expression& exp) { sizeExpression = exp; };
-
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	std::wstring fileName;
-	int64_t fileSize;
-
-	Expression startExpression;
-	Expression sizeExpression;
-	int64_t size;
-	int64_t start;
-	int64_t virtualAddress;
-};
-
-class CDirectiveAlignFill: public CAssemblerCommand
-{
-public:
-	enum Mode { AlignPhysical, AlignVirtual, Fill };
-
-	CDirectiveAlignFill(int64_t value, Mode mode);
-	CDirectiveAlignFill(Expression& value, Mode mode);
-	CDirectiveAlignFill(Expression& value, Expression& fillValue, Mode mode);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	Mode mode;
-	Expression valueExpression;
-	Expression fillExpression;
-	int64_t value;
-	int64_t finalSize;
-	int8_t fillByte;
-	int64_t virtualAddress;
-};
-
-class CDirectiveSkip: public CAssemblerCommand
-{
-public:
-	CDirectiveSkip(Expression& value);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const { };
-private:
-	Expression expression;
-	int64_t value;
-	int64_t virtualAddress;
-};
-
-class CDirectiveHeaderSize: public CAssemblerCommand
-{
-public:
-	CDirectiveHeaderSize(Expression expression);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const { };
-private:
-	void exec() const;
-	Expression expression;
-	int64_t headerSize;
-	int64_t virtualAddress;
-};
-
-class DirectiveObjImport: public CAssemblerCommand
-{
-public:
-	DirectiveObjImport(const std::wstring& inputName);
-	DirectiveObjImport(const std::wstring& inputName, const std::wstring& ctorName);
-	~DirectiveObjImport() { };
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	ElfRelocator rel;
-	std::unique_ptr<CAssemblerCommand> ctor;
-};
-
 // file: Archs/MIPS/MipsParser.cpp
+
 
 #define CHECK(exp) if (!(exp)) return false;
 
 const MipsRegisterDescriptor mipsRegisters[] = {
-	{ L"r0", 0 },		{ L"zero", 0},		{ L"at", 1 },		{ L"r1", 1 },
-	{ L"v0", 2 },		{ L"r2", 2 },		{ L"v1", 3 },		{ L"r3", 3 },
-	{ L"a0", 4 },		{ L"r4", 4 },		{ L"a1", 5 },		{ L"r5", 5 },
-	{ L"a2", 6 },		{ L"r6", 6 },		{ L"a3", 7 },		{ L"r7", 7 },
-	{ L"t0", 8 },		{ L"r8", 8 },		{ L"t1", 9 },		{ L"r9", 9 },
-	{ L"t2", 10 },		{ L"r10", 10 },		{ L"t3", 11 },		{ L"r11", 11 },
-	{ L"t4", 12 },		{ L"r12", 12 },		{ L"t5", 13 },		{ L"r13", 13 },
-	{ L"t6", 14 },		{ L"r14", 14 },		{ L"t7", 15 },		{ L"r15", 15 },
-	{ L"s0", 16 },		{ L"r16", 16 },		{ L"s1", 17 },		{ L"r17", 17 },
-	{ L"s2", 18 },		{ L"r18", 18 },		{ L"s3", 19 },		{ L"r19", 19 },
-	{ L"s4", 20 },		{ L"r20", 20 },		{ L"s5", 21 },		{ L"r21", 21 },
-	{ L"s6", 22 },		{ L"r22", 22 },		{ L"s7", 23 },		{ L"r23", 23 },
-	{ L"t8", 24 },		{ L"r24", 24 },		{ L"t9", 25 },		{ L"r25", 25 },
-	{ L"k0", 26 },		{ L"r26", 26 },		{ L"k1", 27 },		{ L"r27", 27 },
-	{ L"gp", 28 },		{ L"r28", 28 },		{ L"sp", 29 },		{ L"r29", 29 },
-	{ L"fp", 30 },		{ L"r30", 30 },		{ L"ra", 31 },		{ L"r31", 31 },
-	{ L"s8", 30 },
+	{ "r0", 0 },  { "zero", 0},  { "at", 1 },  { "r1", 1 },
+	{ "v0", 2 },  { "r2", 2 },   { "v1", 3 },  { "r3", 3 },
+	{ "a0", 4 },  { "r4", 4 },   { "a1", 5 },  { "r5", 5 },
+	{ "a2", 6 },  { "r6", 6 },   { "a3", 7 },  { "r7", 7 },
+	{ "t0", 8 },  { "r8", 8 },   { "t1", 9 },  { "r9", 9 },
+	{ "t2", 10 }, { "r10", 10 }, { "t3", 11 }, { "r11", 11 },
+	{ "t4", 12 }, { "r12", 12 }, { "t5", 13 }, { "r13", 13 },
+	{ "t6", 14 }, { "r14", 14 }, { "t7", 15 }, { "r15", 15 },
+	{ "s0", 16 }, { "r16", 16 }, { "s1", 17 }, { "r17", 17 },
+	{ "s2", 18 }, { "r18", 18 }, { "s3", 19 }, { "r19", 19 },
+	{ "s4", 20 }, { "r20", 20 }, { "s5", 21 }, { "r21", 21 },
+	{ "s6", 22 }, { "r22", 22 }, { "s7", 23 }, { "r23", 23 },
+	{ "t8", 24 }, { "r24", 24 }, { "t9", 25 }, { "r25", 25 },
+	{ "k0", 26 }, { "r26", 26 }, { "k1", 27 }, { "r27", 27 },
+	{ "gp", 28 }, { "r28", 28 }, { "sp", 29 }, { "r29", 29 },
+	{ "fp", 30 }, { "r30", 30 }, { "ra", 31 }, { "r31", 31 },
+	{ "s8", 30 },
 };
 
 const MipsRegisterDescriptor mipsFloatRegisters[] = {
-	{ L"f0", 0 },		{ L"f1", 1 },		{ L"f2", 2 },		{ L"f3", 3 },
-	{ L"f4", 4 },		{ L"f5", 5 },		{ L"f6", 6 },		{ L"f7", 7 },
-	{ L"f8", 8 },		{ L"f9", 9 },		{ L"f00", 0 },		{ L"f01", 1 },
-	{ L"f02", 2 },		{ L"f03", 3 },		{ L"f04", 4 },		{ L"f05", 5 },
-	{ L"f06", 6 },		{ L"f07", 7 },		{ L"f08", 8 },		{ L"f09", 9 },
-	{ L"f10", 10 },		{ L"f11", 11 },		{ L"f12", 12 },		{ L"f13", 13 },
-	{ L"f14", 14 },		{ L"f15", 15 },		{ L"f16", 16 },		{ L"f17", 17 },
-	{ L"f18", 18 },		{ L"f19", 19 },		{ L"f20", 20 },		{ L"f21", 21 },
-	{ L"f22", 22 },		{ L"f23", 23 },		{ L"f24", 24 },		{ L"f25", 25 },
-	{ L"f26", 26 },		{ L"f27", 27 },		{ L"f28", 28 },		{ L"f29", 29 },
-	{ L"f30", 30 },		{ L"f31", 31 },
+	{ "f0", 0 },   { "f1", 1 },   { "f2", 2 },   { "f3", 3 },
+	{ "f4", 4 },   { "f5", 5 },   { "f6", 6 },   { "f7", 7 },
+	{ "f8", 8 },   { "f9", 9 },   { "f00", 0 },  { "f01", 1 },
+	{ "f02", 2 },  { "f03", 3 },  { "f04", 4 },  { "f05", 5 },
+	{ "f06", 6 },  { "f07", 7 },  { "f08", 8 },  { "f09", 9 },
+	{ "f10", 10 }, { "f11", 11 }, { "f12", 12 }, { "f13", 13 },
+	{ "f14", 14 }, { "f15", 15 }, { "f16", 16 }, { "f17", 17 },
+	{ "f18", 18 }, { "f19", 19 }, { "f20", 20 }, { "f21", 21 },
+	{ "f22", 22 }, { "f23", 23 }, { "f24", 24 }, { "f25", 25 },
+	{ "f26", 26 }, { "f27", 27 }, { "f28", 28 }, { "f29", 29 },
+	{ "f30", 30 }, { "f31", 31 },
 };
 
 const MipsRegisterDescriptor mipsFpuControlRegisters[] = {
-	{ L"fir", 0 },		{ L"fcr0", 0 },		{ L"fcsr", 31 },	{ L"fcr31", 31 },
+	{ "fir", 0 }, { "fcr0", 0 }, { "fcsr", 31 }, { "fcr31", 31 },
 };
 
 const MipsRegisterDescriptor mipsCop0Registers[] = {
-	{ L"index", 0},			{ L"random", 1 }, 		{ L"entrylo", 2 },
-	{ L"entrylo0", 2 },		{ L"entrylo1", 3 },		{ L"context", 4 },
-	{ L"pagemask", 5 },		{ L"wired", 6 },		{ L"badvaddr", 8 },
-	{ L"count", 9 },		{ L"entryhi", 10 },		{ L"compare", 11 },
-	{ L"status", 12 },		{ L"sr", 12 },			{ L"cause", 13 },
-	{ L"epc", 14 },			{ L"prid", 15 },		{ L"config", 16 },
-	{ L"lladdr", 17 },		{ L"watchlo", 18 },		{ L"watchhi", 19 },
-	{ L"xcontext", 20 },	{ L"badpaddr", 23 },	{ L"ecc", 26 },
-	{ L"perr", 26},			{ L"cacheerr", 27 },	{ L"taglo", 28 },
-	{ L"taghi", 29 },		{ L"errorepc", 30 },
+	{ "index", 0},      { "random", 1 },    { "entrylo", 2 },
+	{ "entrylo0", 2 },  { "entrylo1", 3 },  { "context", 4 },
+	{ "pagemask", 5 },  { "wired", 6 },     { "badvaddr", 8 },
+	{ "count", 9 },     { "entryhi", 10 },  { "compare", 11 },
+	{ "status", 12 },   { "sr", 12 },       { "cause", 13 },
+	{ "epc", 14 },      { "prid", 15 },     { "config", 16 },
+	{ "lladdr", 17 },   { "watchlo", 18 },  { "watchhi", 19 },
+	{ "xcontext", 20 }, { "badpaddr", 23 }, { "ecc", 26 },
+	{ "perr", 26},      { "cacheerr", 27 }, { "taglo", 28 },
+	{ "taghi", 29 },    { "errorepc", 30 },
 };
 
 const MipsRegisterDescriptor mipsPs2Cop2FpRegisters[] = {
-	{ L"vf0", 0 },		{ L"vf1", 1 },		{ L"vf2", 2 },		{ L"vf3", 3 },
-	{ L"vf4", 4 },		{ L"vf5", 5 },		{ L"vf6", 6 },		{ L"vf7", 7 },
-	{ L"vf8", 8 },		{ L"vf9", 9 },		{ L"vf00", 0 },		{ L"vf01", 1 },
-	{ L"vf02", 2 },		{ L"vf03", 3 },		{ L"vf04", 4 },		{ L"vf05", 5 },
-	{ L"vf06", 6 },		{ L"vf07", 7 },		{ L"vf08", 8 },		{ L"vf09", 9 },
-	{ L"vf10", 10 },	{ L"vf11", 11 },	{ L"vf12", 12 },	{ L"vf13", 13 },
-	{ L"vf14", 14 },	{ L"vf15", 15 },	{ L"vf16", 16 },	{ L"vf17", 17 },
-	{ L"vf18", 18 },	{ L"vf19", 19 },	{ L"vf20", 20 },	{ L"vf21", 21 },
-	{ L"vf22", 22 },	{ L"vf23", 23 },	{ L"vf24", 24 },	{ L"vf25", 25 },
-	{ L"vf26", 26 },	{ L"vf27", 27 },	{ L"vf28", 28 },	{ L"vf29", 29 },
-	{ L"vf30", 30 },	{ L"vf31", 31 },
+	{ "vf0", 0 },   { "vf1", 1 },   { "vf2", 2 },   { "vf3", 3 },
+	{ "vf4", 4 },   { "vf5", 5 },   { "vf6", 6 },   { "vf7", 7 },
+	{ "vf8", 8 },   { "vf9", 9 },   { "vf00", 0 },  { "vf01", 1 },
+	{ "vf02", 2 },  { "vf03", 3 },  { "vf04", 4 },  { "vf05", 5 },
+	{ "vf06", 6 },  { "vf07", 7 },  { "vf08", 8 },  { "vf09", 9 },
+	{ "vf10", 10 }, { "vf11", 11 }, { "vf12", 12 }, { "vf13", 13 },
+	{ "vf14", 14 }, { "vf15", 15 }, { "vf16", 16 }, { "vf17", 17 },
+	{ "vf18", 18 }, { "vf19", 19 }, { "vf20", 20 }, { "vf21", 21 },
+	{ "vf22", 22 }, { "vf23", 23 }, { "vf24", 24 }, { "vf25", 25 },
+	{ "vf26", 26 }, { "vf27", 27 }, { "vf28", 28 }, { "vf29", 29 },
+	{ "vf30", 30 }, { "vf31", 31 },
 };
 
 const MipsRegisterDescriptor mipsPsxCop2DataRegisters[] = {
-	{ L"vxy0", 0 },		{ L"vz0", 1 },		{ L"vxy1", 2 },		{ L"vz1", 3 },
-	{ L"vxy2", 4 },		{ L"vz2", 5 },		{ L"rgbc", 6 },		{ L"otz", 7 },
-	{ L"ir0", 8 },		{ L"ir1", 9 },		{ L"ir2", 10 },		{ L"ir3", 11 },
-	{ L"sxy0", 12 },	{ L"sxy1", 13 },	{ L"sxy2", 14 },	{ L"sxyp", 15 },
-	{ L"sz0", 16 },		{ L"sz1", 17 },		{ L"sz2", 18 },		{ L"sz3", 19 },
-	{ L"rgb0", 20 },	{ L"rgb1", 21 },	{ L"rgb2", 22 },	{ L"res1", 23 },
-	{ L"mac0", 24 },	{ L"mac1", 25 },	{ L"mac2", 26 },	{ L"mac3", 27 },
-	{ L"irgb", 28 },	{ L"orgb", 29 },	{ L"lzcs", 30 },	{ L"lzcr", 31 },
+	{ "vxy0", 0 },  { "vz0", 1 },   { "vxy1", 2 },  { "vz1", 3 },
+	{ "vxy2", 4 },  { "vz2", 5 },   { "rgbc", 6 },  { "otz", 7 },
+	{ "ir0", 8 },   { "ir1", 9 },   { "ir2", 10 },  { "ir3", 11 },
+	{ "sxy0", 12 }, { "sxy1", 13 }, { "sxy2", 14 }, { "sxyp", 15 },
+	{ "sz0", 16 },  { "sz1", 17 },  { "sz2", 18 },  { "sz3", 19 },
+	{ "rgb0", 20 }, { "rgb1", 21 }, { "rgb2", 22 }, { "res1", 23 },
+	{ "mac0", 24 }, { "mac1", 25 }, { "mac2", 26 }, { "mac3", 27 },
+	{ "irgb", 28 }, { "orgb", 29 }, { "lzcs", 30 }, { "lzcr", 31 },
 };
 
 const MipsRegisterDescriptor mipsPsxCop2ControlRegisters[] = {
-	{ L"rt0", 0 },		{ L"rt1", 1 },		{ L"rt2", 2 },		{ L"rt3", 3 },
-	{ L"rt4", 4 },		{ L"trx", 5 },		{ L"try", 6 },		{ L"trz", 7 },
-	{ L"llm0", 8 },		{ L"llm1", 9 },		{ L"llm2", 10 },	{ L"llm3", 11 },
-	{ L"llm4", 12 },	{ L"rbk", 13 },		{ L"gbk", 14 },		{ L"bbk", 15 },
-	{ L"lcm0", 16 },	{ L"lcm1", 17 },	{ L"lcm2", 18 },	{ L"lcm3", 19 },
-	{ L"lcm4", 20 },	{ L"rfc", 21 },		{ L"gfc", 22 },		{ L"bfc", 23 },
-	{ L"ofx", 24 },		{ L"ofy", 25 },		{ L"h", 26 },		{ L"dqa", 27 },
-	{ L"dqb", 28 },		{ L"zsf3", 29 },	{ L"zsf4", 30 },	{ L"flag", 31 },
+	{ "rt0", 0 },   { "rt1", 1 },   { "rt2", 2 },   { "rt3", 3 },
+	{ "rt4", 4 },   { "trx", 5 },   { "try", 6 },   { "trz", 7 },
+	{ "llm0", 8 },  { "llm1", 9 },  { "llm2", 10 }, { "llm3", 11 },
+	{ "llm4", 12 }, { "rbk", 13 },  { "gbk", 14 },  { "bbk", 15 },
+	{ "lcm0", 16 }, { "lcm1", 17 }, { "lcm2", 18 }, { "lcm3", 19 },
+	{ "lcm4", 20 }, { "rfc", 21 },  { "gfc", 22 },  { "bfc", 23 },
+	{ "ofx", 24 },  { "ofy", 25 },  { "h", 26 },    { "dqa", 27 },
+	{ "dqb", 28 },  { "zsf3", 29 }, { "zsf4", 30 }, { "flag", 31 },
 };
 
 const MipsRegisterDescriptor mipsRspCop0Registers[] = {
-	{ L"sp_mem_addr", 0 },	{ L"sp_dram_addr", 1 }, { L"sp_rd_len", 2 },
-	{ L"sp_wr_len", 3 },	{ L"sp_status", 4 },	{ L"sp_dma_full", 5 },
-	{ L"sp_dma_busy", 6 },	{ L"sp_semaphore", 7 },	{ L"dpc_start", 8 },
-	{ L"dpc_end", 9 },		{ L"dpc_current", 10 },	{ L"dpc_status", 11 },
-	{ L"dpc_clock", 12 },	{ L"dpc_bufbusy", 13 },	{ L"dpc_pipebusy", 14 },
-	{ L"dpc_tmem", 15 },
+	{ "sp_mem_addr", 0 }, { "sp_dram_addr", 1 }, { "sp_rd_len", 2 },
+	{ "sp_wr_len", 3 },   { "sp_status", 4 },    { "sp_dma_full", 5 },
+	{ "sp_dma_busy", 6 }, { "sp_semaphore", 7 }, { "dpc_start", 8 },
+	{ "dpc_end", 9 },     { "dpc_current", 10 }, { "dpc_status", 11 },
+	{ "dpc_clock", 12 },  { "dpc_bufbusy", 13 }, { "dpc_pipebusy", 14 },
+	{ "dpc_tmem", 15 },
 };
 
 const MipsRegisterDescriptor mipsRspVectorControlRegisters[] = {
-	{ L"vco", 0 },		{ L"vcc", 1 }, 		{ L"vce", 2 },
+	{ "vco", 0 }, { "vcc", 1 }, { "vce", 2 },
 };
 
 const MipsRegisterDescriptor mipsRspVectorRegisters[] = {
-	{ L"v0", 0 },		{ L"v1", 1 },		{ L"v2", 2 },		{ L"v3", 3 },
-	{ L"v4", 4 },		{ L"v5", 5 },		{ L"v6", 6 },		{ L"v7", 7 },
-	{ L"v8", 8 },		{ L"v9", 9 },		{ L"v00", 0 },		{ L"v01", 1 },
-	{ L"v02", 2 },		{ L"v03", 3 },		{ L"v04", 4 },		{ L"v05", 5 },
-	{ L"v06", 6 },		{ L"v07", 7 },		{ L"v08", 8 },		{ L"v09", 9 },
-	{ L"v10", 10 },		{ L"v11", 11 },		{ L"v12", 12 },		{ L"v13", 13 },
-	{ L"v14", 14 },		{ L"v15", 15 },		{ L"v16", 16 },		{ L"v17", 17 },
-	{ L"v18", 18 },		{ L"v19", 19 },		{ L"v20", 20 },		{ L"v21", 21 },
-	{ L"v22", 22 },		{ L"v23", 23 },		{ L"v24", 24 },		{ L"v25", 25 },
-	{ L"v26", 26 },		{ L"v27", 27 },		{ L"v28", 28 },		{ L"v29", 29 },
-	{ L"v30", 30 },		{ L"v31", 31 },
+	{ "v0", 0 },   { "v1", 1 },   { "v2", 2 },   { "v3", 3 },
+	{ "v4", 4 },   { "v5", 5 },   { "v6", 6 },   { "v7", 7 },
+	{ "v8", 8 },   { "v9", 9 },   { "v00", 0 },  { "v01", 1 },
+	{ "v02", 2 },  { "v03", 3 },  { "v04", 4 },  { "v05", 5 },
+	{ "v06", 6 },  { "v07", 7 },  { "v08", 8 },  { "v09", 9 },
+	{ "v10", 10 }, { "v11", 11 }, { "v12", 12 }, { "v13", 13 },
+	{ "v14", 14 }, { "v15", 15 }, { "v16", 16 }, { "v17", 17 },
+	{ "v18", 18 }, { "v19", 19 }, { "v20", 20 }, { "v21", 21 },
+	{ "v22", 22 }, { "v23", 23 }, { "v24", 24 }, { "v25", 25 },
+	{ "v26", 26 }, { "v27", 27 }, { "v28", 28 }, { "v29", 29 },
+	{ "v30", 30 }, { "v31", 31 },
 };
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveResetDelay(Parser& parser, int flags)
 {
 	Mips.SetIgnoreDelay(true);
-	return ::make_unique<DummyCommand>();
+	return std::make_unique<DummyCommand>();
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveFixLoadDelay(Parser& parser, int flags)
 {
 	Mips.SetFixLoadDelay(true);
-	return ::make_unique<DummyCommand>();
+	return std::make_unique<DummyCommand>();
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveLoadElf(Parser& parser, int flags)
 {
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,2) == false)
+	if (!parser.parseExpressionList(list,1,2))
 		return nullptr;
 
-	std::wstring inputName, outputName;
-	if (list[0].evaluateString(inputName,true) == false)
+	StringLiteral inputName, outputName;
+	if (!list[0].evaluateString(inputName,true))
 		return nullptr;
 
 	if (list.size() == 2)
 	{
-		if (list[1].evaluateString(outputName,true) == false)
+		if (!list[1].evaluateString(outputName,true))
 			return nullptr;
-		return ::make_unique<DirectiveLoadMipsElf>(inputName,outputName);
+		return std::make_unique<DirectiveLoadMipsElf>(inputName.path(),outputName.path());
 	} else {
-		return ::make_unique<DirectiveLoadMipsElf>(inputName);
+		return std::make_unique<DirectiveLoadMipsElf>(inputName.path());
 	}
 }
 
@@ -7004,40 +11019,57 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveImportObj(Parser& parser, int f
 	const Token& start = parser.peekToken();
 
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,2) == false)
+	if (!parser.parseExpressionList(list,1,2))
 		return nullptr;
 
-	std::wstring inputName;
-	if (list[0].evaluateString(inputName,true) == false)
+	StringLiteral inputName;
+	if (!list[0].evaluateString(inputName,true))
 		return nullptr;
 
 	if (list.size() == 2)
 	{
-		std::wstring ctorName;
-		if (list[1].evaluateIdentifier(ctorName) == false)
+		Identifier ctorName;
+		if (!list[1].evaluateIdentifier(ctorName))
 			return nullptr;
 
 		if (Mips.GetVersion() == MARCH_PSX)
 		{
-			parser.printError(start,L"Constructor not supported for PSX libraries");
-			return ::make_unique<InvalidCommand>();
+			auto attempt = std::make_unique<DirectiveObjImport>(inputName.path(),ctorName);
+			if (!attempt->isSuccessfullyImported())
+			{
+				parser.printError(start, "Constructor not supported for non-ELF PSX libraries");
+				return std::make_unique<InvalidCommand>();
+			}
+			else
+			{
+				return attempt;
+			}
 		}
 
-		return ::make_unique<DirectiveObjImport>(inputName,ctorName);
+		return std::make_unique<DirectiveObjImport>(inputName.path(),ctorName);
 	}
 
 	if (Mips.GetVersion() == MARCH_PSX)
-		return ::make_unique<DirectivePsxObjImport>(inputName);
+	{
+		// Fallback to ELF, if the PSX library importer fails.
+		auto psxLib = std::make_unique<DirectivePsxObjImport>(inputName.path());
+		if (!psxLib->isSuccessfullyImported())
+			return std::make_unique<DirectiveObjImport>(inputName.path());
+		else
+			return psxLib;
+	}
 	else
-		return ::make_unique<DirectiveObjImport>(inputName);
+	{
+		return std::make_unique<DirectiveObjImport>(inputName.path());
+	}
 }
 
 const DirectiveMap mipsDirectives = {
-	{ L".resetdelay",		{ &parseDirectiveResetDelay,	0 } },
-	{ L".fixloaddelay",		{ &parseDirectiveFixLoadDelay,	0 } },
-	{ L".loadelf",			{ &parseDirectiveLoadElf,		0 } },
-	{ L".importobj",		{ &parseDirectiveImportObj,		0 } },
-	{ L".importlib",		{ &parseDirectiveImportObj,		0 } },
+	{ ".resetdelay",		{ &parseDirectiveResetDelay,	0 } },
+	{ ".fixloaddelay",		{ &parseDirectiveFixLoadDelay,	0 } },
+	{ ".loadelf",			{ &parseDirectiveLoadElf,		0 } },
+	{ ".importobj",		{ &parseDirectiveImportObj,		0 } },
+	{ ".importlib",		{ &parseDirectiveImportObj,		0 } },
 };
 
 std::unique_ptr<CAssemblerCommand> MipsParser::parseDirective(Parser& parser)
@@ -7051,10 +11083,10 @@ bool MipsParser::parseRegisterNumber(Parser& parser, MipsRegisterValue& dest, in
 	if (parser.peekToken().type == TokenType::Dollar)
 	{
 		const Token& number = parser.peekToken(1);
-		if (number.type == TokenType::Integer && number.intValue < numValues)
+		if (number.type == TokenType::Integer && number.intValue() < numValues)
 		{
-			dest.name = formatString(L"$%d", number.intValue);
-			dest.num = (int) number.intValue;
+			dest.name = Identifier(tfm::format("$%d", number.intValue()));
+			dest.num = (int) number.intValue();
 
 			parser.eatTokens(2);
 			return true;
@@ -7076,12 +11108,12 @@ bool MipsParser::parseRegisterTable(Parser& parser, MipsRegisterValue& dest, con
 	if (token.type != TokenType::Identifier)
 		return false;
 
-	const std::wstring stringValue = token.getStringValue();
+	const auto &identifier = token.identifierValue();
 	for (size_t i = 0; i < count; i++)
 	{
-		if (stringValue == table[i].name)
+		if (identifier == table[i].name)
 		{
-			dest.name = stringValue;
+			dest.name = identifier;
 			dest.num = table[i].num;
 			parser.eatTokens(hasDollar ? 2 : 1);
 			return true;
@@ -7098,7 +11130,7 @@ bool MipsParser::parseRegister(Parser& parser, MipsRegisterValue& dest)
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsRegisters,ARRAY_SIZE(mipsRegisters));
+	return parseRegisterTable(parser,dest,mipsRegisters, std::size(mipsRegisters));
 }
 
 bool MipsParser::parseFpuRegister(Parser& parser, MipsRegisterValue& dest)
@@ -7108,7 +11140,7 @@ bool MipsParser::parseFpuRegister(Parser& parser, MipsRegisterValue& dest)
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsFloatRegisters,ARRAY_SIZE(mipsFloatRegisters));
+	return parseRegisterTable(parser,dest,mipsFloatRegisters, std::size(mipsFloatRegisters));
 }
 
 bool MipsParser::parseFpuControlRegister(Parser& parser, MipsRegisterValue& dest)
@@ -7118,7 +11150,7 @@ bool MipsParser::parseFpuControlRegister(Parser& parser, MipsRegisterValue& dest
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsFpuControlRegisters,ARRAY_SIZE(mipsFpuControlRegisters));
+	return parseRegisterTable(parser,dest,mipsFpuControlRegisters, std::size(mipsFpuControlRegisters));
 }
 
 bool MipsParser::parseCop0Register(Parser& parser, MipsRegisterValue& dest)
@@ -7128,13 +11160,13 @@ bool MipsParser::parseCop0Register(Parser& parser, MipsRegisterValue& dest)
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsCop0Registers,ARRAY_SIZE(mipsCop0Registers));
+	return parseRegisterTable(parser,dest,mipsCop0Registers, std::size(mipsCop0Registers));
 }
 
 bool MipsParser::parsePs2Cop2Register(Parser& parser, MipsRegisterValue& dest)
 {
 	dest.type = MipsRegisterType::Ps2Cop2;
-	return parseRegisterTable(parser,dest,mipsPs2Cop2FpRegisters,ARRAY_SIZE(mipsPs2Cop2FpRegisters));
+	return parseRegisterTable(parser,dest,mipsPs2Cop2FpRegisters, std::size(mipsPs2Cop2FpRegisters));
 }
 
 bool MipsParser::parsePsxCop2DataRegister(Parser& parser, MipsRegisterValue& dest)
@@ -7144,7 +11176,7 @@ bool MipsParser::parsePsxCop2DataRegister(Parser& parser, MipsRegisterValue& des
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsPsxCop2DataRegisters,ARRAY_SIZE(mipsPsxCop2DataRegisters));
+	return parseRegisterTable(parser,dest,mipsPsxCop2DataRegisters, std::size(mipsPsxCop2DataRegisters));
 }
 
 bool MipsParser::parsePsxCop2ControlRegister(Parser& parser, MipsRegisterValue& dest)
@@ -7154,7 +11186,7 @@ bool MipsParser::parsePsxCop2ControlRegister(Parser& parser, MipsRegisterValue& 
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsPsxCop2ControlRegisters,ARRAY_SIZE(mipsPsxCop2ControlRegisters));
+	return parseRegisterTable(parser,dest,mipsPsxCop2ControlRegisters, std::size(mipsPsxCop2ControlRegisters));
 }
 
 bool MipsParser::parseRspCop0Register(Parser& parser, MipsRegisterValue& dest)
@@ -7164,7 +11196,7 @@ bool MipsParser::parseRspCop0Register(Parser& parser, MipsRegisterValue& dest)
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsRspCop0Registers,ARRAY_SIZE(mipsRspCop0Registers));
+	return parseRegisterTable(parser,dest,mipsRspCop0Registers, std::size(mipsRspCop0Registers));
 }
 
 bool MipsParser::parseRspVectorControlRegister(Parser& parser, MipsRegisterValue& dest)
@@ -7174,13 +11206,13 @@ bool MipsParser::parseRspVectorControlRegister(Parser& parser, MipsRegisterValue
 	if (parseRegisterNumber(parser, dest, 32))
 		return true;
 
-	return parseRegisterTable(parser,dest,mipsRspVectorControlRegisters,ARRAY_SIZE(mipsRspVectorControlRegisters));
+	return parseRegisterTable(parser,dest,mipsRspVectorControlRegisters, std::size(mipsRspVectorControlRegisters));
 }
 
 bool MipsParser::parseRspVectorRegister(Parser& parser, MipsRegisterValue& dest)
 {
 	dest.type = MipsRegisterType::RspVector;
-	return parseRegisterTable(parser,dest,mipsRspVectorRegisters,ARRAY_SIZE(mipsRspVectorRegisters));
+	return parseRegisterTable(parser,dest,mipsRspVectorRegisters, std::size(mipsRspVectorRegisters));
 }
 
 bool MipsParser::parseRspVectorElement(Parser& parser, MipsRegisterValue& dest)
@@ -7190,12 +11222,12 @@ bool MipsParser::parseRspVectorElement(Parser& parser, MipsRegisterValue& dest)
 	if (parser.peekToken().type == TokenType::LBrack)
 	{
 		static const MipsRegisterDescriptor rspElementNames[] = {
-			{ L"0q", 2 },		{ L"1q", 3 },		{ L"0h", 4 },		{ L"1h", 5 },
-			{ L"2h", 6 },		{ L"3h", 7 },		{ L"0w", 8 },		{ L"0", 8 },
-			{ L"1w", 9 },		{ L"1", 9 },		{ L"2w", 10 },		{ L"2", 10 },
-			{ L"3w", 11 },		{ L"3", 11 },		{ L"4w", 12 },		{ L"4", 12 },
-			{ L"5w", 13 },		{ L"5", 13 },		{ L"6w", 14 },		{ L"6", 14 },
-			{ L"7w", 15 },		{ L"7", 15 },
+			{ "0q", 2 },  { "1q", 3 }, { "0h", 4 },  { "1h", 5 },
+			{ "2h", 6 },  { "3h", 7 }, { "0w", 8 },  { "0", 8 },
+			{ "1w", 9 },  { "1", 9 },  { "2w", 10 }, { "2", 10 },
+			{ "3w", 11 }, { "3", 11 }, { "4w", 12 }, { "4", 12 },
+			{ "5w", 13 }, { "5", 13 }, { "6w", 14 }, { "6", 14 },
+			{ "7w", 15 }, { "7", 15 },
 		};
 
 		parser.eatToken();
@@ -7209,18 +11241,18 @@ bool MipsParser::parseRspVectorElement(Parser& parser, MipsRegisterValue& dest)
 			return false;
 
 		//ignore the numerical values, just use the original text as an identifier
-		std::wstring stringValue = token.getOriginalText();
+		std::string stringValue = token.getOriginalText();
 		if (std::any_of(stringValue.begin(), stringValue.end(), iswupper))
 		{
-			std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), towlower);
+			std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), tolower);
 		}
 
-		for (size_t i = 0; i < ARRAY_SIZE(rspElementNames); i++)
+		for (size_t i = 0; i < std::size(rspElementNames); i++)
 		{
 			if (stringValue == rspElementNames[i].name)
 			{
 				dest.num = rspElementNames[i].num;
-				dest.name = rspElementNames[i].name;
+				dest.name = Identifier(rspElementNames[i].name);
 
 				return parser.nextToken().type == TokenType::RBrack;
 			}
@@ -7230,7 +11262,7 @@ bool MipsParser::parseRspVectorElement(Parser& parser, MipsRegisterValue& dest)
 	}
 
 	dest.num = 0;
-	dest.name = L"";
+	dest.name = Identifier();
 
 	return true;
 
@@ -7245,11 +11277,11 @@ bool MipsParser::parseRspScalarElement(Parser& parser, MipsRegisterValue& dest)
 
 	const Token &token = parser.nextToken();
 
-	if (token.type != TokenType::Integer || token.intValue >= 8)
+	if (token.type != TokenType::Integer || token.intValue() >= 8)
 		return false;
 
-	dest.name = formatString(L"%d", token.intValue);
-	dest.num = token.intValue + 8;
+	dest.name = Identifier(tfm::format("%d", token.intValue()));
+	dest.num = (int)token.intValue() + 8;
 
 	return parser.nextToken().type == TokenType::RBrack;
 }
@@ -7264,22 +11296,22 @@ bool MipsParser::parseRspOffsetElement(Parser& parser, MipsRegisterValue& dest)
 
 		const Token &token = parser.nextToken();
 
-		if (token.type != TokenType::Integer || token.intValue >= 16)
+		if (token.type != TokenType::Integer || token.intValue() >= 16)
 			return false;
 
-		dest.name = formatString(L"%d", token.intValue);
-		dest.num = token.intValue;
+		dest.name = Identifier(tfm::format("%d", token.intValue()));
+		dest.num = (int)token.intValue();
 
 		return parser.nextToken().type == TokenType::RBrack;
 	}
 
 	dest.num = 0;
-	dest.name = L"";
+	dest.name = Identifier();
 
 	return true;
 }
 
-static bool decodeDigit(wchar_t digit, int& dest)
+static bool decodeDigit(char digit, int& dest)
 {
 	if (digit >= '0' && digit <= '9')
 	{
@@ -7292,15 +11324,16 @@ static bool decodeDigit(wchar_t digit, int& dest)
 bool MipsParser::parseVfpuRegister(Parser& parser, MipsRegisterValue& reg, int size)
 {
 	const Token& token = parser.peekToken();
-	const std::wstring stringValue = token.getStringValue();
-	if (token.type != TokenType::Identifier || stringValue.size() != 4)
+	if (token.type != TokenType::Identifier || token.identifierValue().size() != 4)
 		return false;
 
+	const Identifier &identifier = token.identifierValue();
+
 	int mtx,col,row;
-	if (decodeDigit(stringValue[1],mtx) == false) return false;
-	if (decodeDigit(stringValue[2],col) == false) return false;
-	if (decodeDigit(stringValue[3],row) == false) return false;
-	wchar_t mode = towlower(stringValue[0]);
+	if (!decodeDigit(identifier.string()[1],mtx)) return false;
+	if (!decodeDigit(identifier.string()[2],col)) return false;
+	if (!decodeDigit(identifier.string()[3],row)) return false;
+	int mode = tolower(identifier.string()[0]);
 
 	if (size < 0 || size > 3)
 		return false;
@@ -7313,7 +11346,8 @@ bool MipsParser::parseVfpuRegister(Parser& parser, MipsRegisterValue& reg, int s
 	{
 	case 'r':					// transposed vector
 		reg.num |= (1 << 5);
-		std::swap(col,row);		// fallthrough
+		std::swap(col,row);
+		[[fallthrough]];
 	case 'c':					// vector
 		reg.type = MipsRegisterType::VfpuVector;
 
@@ -7340,7 +11374,8 @@ bool MipsParser::parseVfpuRegister(Parser& parser, MipsRegisterValue& reg, int s
 			return false;
 		break;
 	case 'e':					// transposed matrix
-		reg.num |= (1 << 5);	// fallthrough
+		reg.num |= (1 << 5);
+		[[fallthrough]];
 	case 'm':					// matrix
 		reg.type = MipsRegisterType::VfpuMatrix;
 
@@ -7369,40 +11404,40 @@ bool MipsParser::parseVfpuRegister(Parser& parser, MipsRegisterValue& reg, int s
 	reg.num |= col;
 	reg.num |= row << 5;
 
-	reg.name = stringValue;
+	reg.name = identifier;
 	parser.eatToken();
 	return true;
 }
 
 bool MipsParser::parseVfpuControlRegister(Parser& parser, MipsRegisterValue& reg)
 {
-	static const wchar_t* vfpuCtrlNames[16] = {
-		L"spfx",	L"tpfx",	L"dpfx",	L"cc",
-		L"inf4",	L"rsv5",	L"rsv6",	L"rev",
-		L"rcx0",	L"rcx1",	L"rcx2",	L"rcx3",
-		L"rcx4",	L"rcx5",	L"rcx6",	L"rcx7",
+	static const char* vfpuCtrlNames[16] = {
+		"spfx", "tpfx", "dpfx", "cc",
+		"inf4", "rsv5", "rsv6", "rev",
+		"rcx0", "rcx1", "rcx2", "rcx3",
+		"rcx4", "rcx5", "rcx6", "rcx7",
 	};
 
 	const Token& token = parser.peekToken();
-	const std::wstring stringValue = token.getStringValue();
 
 	if (token.type == TokenType::Identifier)
 	{
+		const auto &identifier = token.identifierValue();
 		for (int i = 0; i < 16; i++)
 		{
-			if (stringValue == vfpuCtrlNames[i])
+			if (identifier == vfpuCtrlNames[i])
 			{
 				reg.num = i;
-				reg.name = vfpuCtrlNames[i];
+				reg.name = identifier;
 
 				parser.eatToken();
 				return true;
 			}
 		}
-	} else if (token.type == TokenType::Integer && token.intValue <= 15)
+	} else if (token.type == TokenType::Integer && token.intValue() <= 15)
 	{
-		reg.num = (int) token.intValue;
-		reg.name = vfpuCtrlNames[reg.num];
+		reg.num = (int) token.intValue();
+		reg.name = Identifier(vfpuCtrlNames[reg.num]);
 
 		parser.eatToken();
 		return true;
@@ -7431,7 +11466,7 @@ bool MipsParser::parseImmediate(Parser& parser, Expression& dest)
 	return dest.isLoaded();
 }
 
-bool MipsParser::matchSymbol(Parser& parser, wchar_t symbol)
+bool MipsParser::matchSymbol(Parser& parser, char symbol)
 {
 	switch (symbol)
 	{
@@ -7456,102 +11491,102 @@ bool MipsParser::parseVcstParameter(Parser& parser, int& result)
 		// maxfloat
 		sequenceParser.addEntry(1,
 			{TokenType::Identifier},
-			{L"maxfloat"}
+			{"maxfloat"}
 		);
 		// sqrt(2)
 		sequenceParser.addEntry(2,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::RParen},
-			{L"sqrt", INT64_C(2)}
+			{"sqrt", INT64_C(2)}
 		);
 		// sqrt(1/2)
 		sequenceParser.addEntry(3,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::Div, TokenType::Integer, TokenType::RParen},
-			{L"sqrt", INT64_C(1), INT64_C(2)}
+			{"sqrt", INT64_C(1), INT64_C(2)}
 		);
 		// sqrt(0.5)
 		sequenceParser.addEntry(3,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Float, TokenType::RParen},
-			{L"sqrt", 0.5}
+			{"sqrt", 0.5}
 		);
 		// 2/sqrt(pi)
 		sequenceParser.addEntry(4,
 			{TokenType::Integer, TokenType::Div, TokenType::Identifier, TokenType::LParen, TokenType::Identifier, TokenType::RParen},
-			{INT64_C(2), L"sqrt", L"pi"}
+			{INT64_C(2), "sqrt", "pi"}
 		);
 		// 2/pi
 		sequenceParser.addEntry(5,
 			{TokenType::Integer, TokenType::Div, TokenType::Identifier},
-			{INT64_C(2), L"pi"}
+			{INT64_C(2), "pi"}
 		);
 		// 1/pi
 		sequenceParser.addEntry(6,
 			{TokenType::Integer, TokenType::Div, TokenType::Identifier},
-			{INT64_C(1), L"pi"}
+			{INT64_C(1), "pi"}
 		);
 		// pi/4
 		sequenceParser.addEntry(7,
 			{TokenType::Identifier, TokenType::Div, TokenType::Integer},
-			{L"pi", INT64_C(4)}
+			{"pi", INT64_C(4)}
 		);
 		// pi/2
 		sequenceParser.addEntry(8,
 			{TokenType::Identifier, TokenType::Div, TokenType::Integer},
-			{L"pi", INT64_C(2)}
+			{"pi", INT64_C(2)}
 		);
 		// pi/6 - early because "pi" is a prefix of it
 		sequenceParser.addEntry(16,
 			{TokenType::Identifier, TokenType::Div, TokenType::Integer},
-			{L"pi", INT64_C(6)}
+			{"pi", INT64_C(6)}
 		);
 		// pi
 		sequenceParser.addEntry(9,
 			{TokenType::Identifier},
-			{L"pi"}
+			{"pi"}
 		);
 		// e
 		sequenceParser.addEntry(10,
 			{TokenType::Identifier},
-			{L"e"}
+			{"e"}
 		);
 		// log2(e)
 		sequenceParser.addEntry(11,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Identifier, TokenType::RParen},
-			{L"log2", L"e"}
+			{"log2", "e"}
 		);
 		// log10(e)
 		sequenceParser.addEntry(12,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Identifier, TokenType::RParen},
-			{L"log10", L"e"}
+			{"log10", "e"}
 		);
 		// ln(2)
 		sequenceParser.addEntry(13,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::RParen},
-			{L"ln", INT64_C(2)}
+			{"ln", INT64_C(2)}
 		);
 		// ln(10)
 		sequenceParser.addEntry(14,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::RParen},
-			{L"ln", INT64_C(10)}
+			{"ln", INT64_C(10)}
 		);
 		// 2*pi
 		sequenceParser.addEntry(15,
 			{TokenType::Integer, TokenType::Mult, TokenType::Identifier},
-			{INT64_C(2), L"pi"}
+			{INT64_C(2), "pi"}
 		);
 		// log10(2)
 		sequenceParser.addEntry(17,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::RParen},
-			{L"log10", INT64_C(2)}
+			{"log10", INT64_C(2)}
 		);
 		// log2(10)
 		sequenceParser.addEntry(18,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::RParen},
-			{L"log2", INT64_C(10)}
+			{"log2", INT64_C(10)}
 		);
 		// sqrt(3)/2
 		sequenceParser.addEntry(19,
 			{TokenType::Identifier, TokenType::LParen, TokenType::Integer, TokenType::RParen, TokenType::Div, TokenType::Integer},
-			{L"sqrt", INT64_C(3), INT64_C(2)}
+			{"sqrt", INT64_C(3), INT64_C(2)}
 		);
 	}
 
@@ -7587,10 +11622,10 @@ bool MipsParser::parseVfpuVrot(Parser& parser, int& result, int size)
 
 		const Token& token = *tokenFinder;
 
-		const std::wstring stringValue = token.getStringValue();
-		if (token.type != TokenType::Identifier || stringValue.size() != 1)
+		if (token.type != TokenType::Identifier || token.identifierValue().size() != 1)
 			return false;
 
+		const std::string &stringValue = token.identifierValue().string();
 		switch (stringValue[0])
 		{
 		case 's':
@@ -7667,21 +11702,21 @@ bool MipsParser::parseVfpuVrot(Parser& parser, int& result, int size)
 
 bool MipsParser::parseVfpuCondition(Parser& parser, int& result)
 {
-	static const wchar_t* conditions[] = {
-		L"fl", L"eq", L"lt", L"le", L"tr", L"ne", L"ge", L"gt",
-		L"ez", L"en", L"ei", L"es", L"nz", L"nn", L"ni", L"ns"
+	static const char* conditions[] = {
+		"fl", "eq", "lt", "le", "tr", "ne", "ge", "gt",
+		"ez", "en", "ei", "es", "nz", "nn", "ni", "ns"
 	};
 
 	const Token& token = parser.nextToken();
 	if (token.type != TokenType::Identifier)
 		return false;
 
-	const std::wstring stringValue = token.getStringValue();
-	for (size_t i = 0; i < ARRAY_SIZE(conditions); i++)
+	const Identifier &stringValue = token.identifierValue();
+	for (size_t i = 0; i <  std::size(conditions); i++)
 	{
 		if (stringValue == conditions[i])
 		{
-			result = i;
+			result = (int)i;
 			return true;
 		}
 	}
@@ -7746,12 +11781,14 @@ bool MipsParser::parseVpfxsParameter(Parser& parser, int& result)
 		}
 
 		const Token& token = *tokenFinder;
+		if (token.type != TokenType::Identifier)
+			return false;
 
 		// check for register
-		const wchar_t* reg;
-		static const wchar_t* vpfxstRegisters = L"xyzw";
-		const std::wstring stringValue = token.getStringValue();
-		if (stringValue.size() == 1 && (reg = wcschr(vpfxstRegisters,stringValue[0])) != nullptr)
+		const char* reg;
+		static const char* vpfxstRegisters = "xyzw";
+		const std::string &stringValue = token.identifierValue().string();
+		if (stringValue.size() == 1 && (reg = strchr(vpfxstRegisters,stringValue[0])) != nullptr)
 		{
 			result |= (reg-vpfxstRegisters) << (i*2);
 
@@ -7768,7 +11805,7 @@ bool MipsParser::parseVpfxsParameter(Parser& parser, int& result)
 		result |= 1 << (12+i);
 
 		int constNum = -1;
-		if (sequenceParser.parse(parser,constNum) == false)
+		if (!sequenceParser.parse(parser,constNum))
 			return false;
 
 		result |= (constNum & 3) << (i*2);
@@ -7793,7 +11830,7 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 		// 0-1
 		sequenceParser.addEntry(-1,
 			{TokenType::Integer, TokenType::Minus, TokenType::NumberString},
-			{INT64_C(0), L"1m"} );
+			{INT64_C(0), "1m"} );
 		// 0:1
 		sequenceParser.addEntry(1,
 			{TokenType::Integer, TokenType::Colon, TokenType::Integer},
@@ -7801,7 +11838,7 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 		// 0:1
 		sequenceParser.addEntry(-1,
 			{TokenType::Integer, TokenType::Colon, TokenType::NumberString},
-			{INT64_C(0), L"1m"} );
+			{INT64_C(0), "1m"} );
 		// -1-1
 		sequenceParser.addEntry(3,
 			{TokenType::Minus, TokenType::Integer, TokenType::Minus, TokenType::Integer},
@@ -7809,7 +11846,7 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 		// -1-1m
 		sequenceParser.addEntry(-3,
 			{TokenType::Minus, TokenType::Integer, TokenType::Minus, TokenType::NumberString},
-			{INT64_C(1), L"1m"} );
+			{INT64_C(1), "1m"} );
 		// -1:1
 		sequenceParser.addEntry(3,
 			{TokenType::Minus, TokenType::Integer, TokenType::Colon, TokenType::Integer},
@@ -7817,7 +11854,7 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 		// -1:1m
 		sequenceParser.addEntry(-3,
 			{TokenType::Minus, TokenType::Integer, TokenType::Colon, TokenType::NumberString},
-			{INT64_C(1), L"1m"} );
+			{INT64_C(1), "1m"} );
 	}
 
 	for (int i = 0; i < 4; i++)
@@ -7831,7 +11868,7 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 		parser.eatToken();
 
 		int num = 0;
-		if (sequenceParser.parse(parser,num) == false)
+		if (!sequenceParser.parse(parser,num))
 			return false;
 
 		// m versions
@@ -7848,17 +11885,17 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 }
 
 
-bool MipsParser::decodeCop2BranchCondition(const std::wstring& text, size_t& pos, int& result)
+bool MipsParser::decodeCop2BranchCondition(const std::string& text, size_t& pos, int& result)
 {
 	if (pos+3 == text.size())
 	{
-		if (startsWith(text,L"any",pos))
+		if (startsWith(text,"any",pos))
 		{
 			result = 4;
 			pos += 3;
 			return true;
 		}
-		if (startsWith(text,L"all",pos))
+		if (startsWith(text,"all",pos))
 		{
 			result = 5;
 			pos += 3;
@@ -7905,15 +11942,15 @@ bool MipsParser::parseCop2BranchCondition(Parser& parser, int& result)
 
 	if (token.type == TokenType::Integer)
 	{
-		result = (int) token.intValue;
-		return token.intValue <= 5;
+		result = (int) token.intValue();
+		return token.intValue() <= 5;
 	}
 
 	if (token.type != TokenType::Identifier)
 		return false;
 
 	size_t pos = 0;
-	return decodeCop2BranchCondition(token.getStringValue(),pos,result);
+	return decodeCop2BranchCondition(token.identifierValue().string(),pos,result);
 }
 
 bool MipsParser::parseWb(Parser& parser)
@@ -7922,7 +11959,7 @@ bool MipsParser::parseWb(Parser& parser)
 	if (token.type != TokenType::Identifier)
 		return false;
 
-	return token.getStringValue() == L"wb";
+	return token.identifierValue() == "wb";
 }
 
 static bool decodeImmediateSize(const char*& encoding, MipsImmediateType& dest)
@@ -7970,7 +12007,7 @@ static bool decodeImmediateSize(const char*& encoding, MipsImmediateType& dest)
 	return true;
 }
 
-bool MipsParser::decodeVfpuType(const std::wstring& name, size_t& pos, int& dest)
+bool MipsParser::decodeVfpuType(const std::string& name, size_t& pos, int& dest)
 {
 	if (pos >= name.size())
 		return false;
@@ -7995,7 +12032,7 @@ bool MipsParser::decodeVfpuType(const std::wstring& name, size_t& pos, int& dest
 	return false;
 }
 
-bool MipsParser::decodeOpcode(const std::wstring& name, const tMipsOpcode& opcode)
+bool MipsParser::decodeOpcode(const std::string& name, const tMipsOpcode& opcode)
 {
 	const char* encoding = opcode.name;
 	size_t pos = 0;
@@ -8043,7 +12080,7 @@ void MipsParser::setOmittedRegisters(const tMipsOpcode& opcode)
 	if (opcode.flags & MO_FRSD)
 		registers.frd = registers.frs;
 
-	if (opcode.flags & MO_RSPVRSD)
+	if (opcode.flags & MO_RSP_VRSD)
 		registers.rspvrd = registers.rspvrs;
 }
 
@@ -8137,7 +12174,7 @@ bool MipsParser::parseParameters(Parser& parser, const tMipsOpcode& opcode)
 			case 's':
 				CHECK(parseVfpuRegister(parser,registers.vrs,opcodeData.vfpuSize));
 				CHECK(registers.vrs.type == MipsRegisterType::VfpuMatrix);
-				if (opcode.flags & MO_TRANSPOSE_VS)
+				if (opcode.flags & MO_VFPU_TRANSPOSE_VS)
 					registers.vrs.num ^= 0x20;
 				break;
 			case 't':
@@ -8224,9 +12261,7 @@ bool MipsParser::parseParameters(Parser& parser, const tMipsOpcode& opcode)
 			break;
 		case 'i':	// primary immediate
 			CHECK(parseImmediate(parser,immediate.primary.expression));
-			allowFunctionCallExpression(*encoding != '(');
 			CHECK(decodeImmediateSize(encoding,immediate.primary.type));
-			allowFunctionCallExpression(true);
 			break;
 		case 'j':	// secondary immediate
 			switch (*encoding++)
@@ -8310,7 +12345,7 @@ std::unique_ptr<CMipsInstruction> MipsParser::parseOpcode(Parser& parser)
 
 	bool paramFail = false;
 	const MipsArchDefinition& arch = mipsArchs[Mips.GetVersion()];
-	const std::wstring stringValue = token.getStringValue();
+	const Identifier &identifier = token.identifierValue();
 
 	for (int z = 0; MipsOpcodes[z].name != nullptr; z++)
 	{
@@ -8326,14 +12361,14 @@ std::unique_ptr<CMipsInstruction> MipsParser::parseOpcode(Parser& parser)
 		if ((MipsOpcodes[z].flags & MO_DFPU) && !(arch.flags & MO_DFPU))
 			continue;
 
-		if (decodeOpcode(stringValue,MipsOpcodes[z]) == true)
+		if (decodeOpcode(identifier.string(),MipsOpcodes[z]))
 		{
 			TokenizerPosition tokenPos = parser.getTokenizer()->getPosition();
 
-			if (parseParameters(parser,MipsOpcodes[z]) == true)
+			if (parseParameters(parser,MipsOpcodes[z]))
 			{
 				// success, return opcode
-				return ::make_unique<CMipsInstruction>(opcodeData,immediate,registers);
+				return std::make_unique<CMipsInstruction>(opcodeData,immediate,registers);
 			}
 
 			parser.getTokenizer()->setPosition(tokenPos);
@@ -8341,17 +12376,17 @@ std::unique_ptr<CMipsInstruction> MipsParser::parseOpcode(Parser& parser)
 		}
 	}
 
-	if (paramFail == true)
-		parser.printError(token,L"MIPS parameter failure");
+	if (paramFail)
+		parser.printError(token, "MIPS parameter failure");
 	else
-		parser.printError(token,L"Invalid MIPS opcode '%s'",stringValue);
+		parser.printError(token, "Invalid MIPS opcode '%s'",identifier);
 
 	return nullptr;
 }
 
 bool MipsParser::parseMacroParameters(Parser& parser, const MipsMacroDefinition& macro)
 {
-	const wchar_t* encoding = (const wchar_t*) macro.args;
+	const char* encoding = macro.args;
 
 	while (*encoding != 0)
 	{
@@ -8370,14 +12405,10 @@ bool MipsParser::parseMacroParameters(Parser& parser, const MipsMacroDefinition&
 			CHECK(parseFpuRegister(parser,registers.frs));
 			break;
 		case 'i':	// primary immediate
-			allowFunctionCallExpression(*encoding != '(');
 			CHECK(parseImmediate(parser,immediate.primary.expression));
-			allowFunctionCallExpression(true);
 			break;
 		case 'I':	// secondary immediate
-			allowFunctionCallExpression(*encoding != '(');
 			CHECK(parseImmediate(parser,immediate.secondary.expression));
-			allowFunctionCallExpression(true);
 			break;
 		default:
 			CHECK(matchSymbol(parser,*(encoding-1)));
@@ -8396,7 +12427,8 @@ bool MipsParser::parseMacroParameters(Parser& parser, const MipsMacroDefinition&
 
 std::unique_ptr<CAssemblerCommand> MipsParser::parseMacro(Parser& parser)
 {
-	TokenizerPosition startPos = parser.getTokenizer()->getPosition();
+	Tokenizer* tokenizer = parser.getTokenizer();
+	TokenizerPosition startPos = tokenizer->getPosition();
 
 	// Cannot be a reference (we eat below.)
 	const Token token = parser.peekToken();
@@ -8404,24 +12436,24 @@ std::unique_ptr<CAssemblerCommand> MipsParser::parseMacro(Parser& parser)
 		return nullptr;
 
 	parser.eatToken();
-	const std::wstring stringValue = token.getStringValue();
+	const Identifier &identifier = token.identifierValue();
 	for (int z = 0; mipsMacros[z].name != nullptr; z++)
 	{
-		if (stringValue == mipsMacros[z].name)
+		if (identifier == mipsMacros[z].name)
 		{
-			TokenizerPosition tokenPos = parser.getTokenizer()->getPosition();
+			TokenizerPosition tokenPos = tokenizer->getPosition();
 
-			if (parseMacroParameters(parser,mipsMacros[z]) == true)
+			if (parseMacroParameters(parser,mipsMacros[z]))
 			{
 				return mipsMacros[z].function(parser,registers,immediate,mipsMacros[z].flags);
 			}
 
-			parser.getTokenizer()->setPosition(tokenPos);
+			tokenizer->setPosition(tokenPos);
 		}
 	}
 
 	// no matching macro found, restore state
-	parser.getTokenizer()->setPosition(startPos);
+	tokenizer->setPosition(startPos);
 	return nullptr;
 }
 
@@ -8451,16 +12483,16 @@ void MipsOpcodeFormatter::handleImmediate(MipsImmediateType type, unsigned int o
 	switch (type)
 	{
 	case MipsImmediateType::ImmediateHalfFloat:
-		buffer += formatString(L"%f", bitsToFloat(originalValue));
+		buffer += tfm::format("%f", bitsToFloat(originalValue));
 		break;
 	case MipsImmediateType::Immediate16:
 		if (!(opcodeFlags & MO_IPCR) && originalValue & 0x8000)
-			buffer += formatString(L"-0x%X", 0x10000-(originalValue & 0xFFFF));
+			buffer += tfm::format("-0x%X", 0x10000-(originalValue & 0xFFFF));
 		else
-			buffer += formatString(L"0x%X", originalValue);
+			buffer += tfm::format("0x%X", originalValue);
 		break;
 	default:
-		buffer += formatString(L"0x%X", originalValue);
+		buffer += tfm::format("0x%X", originalValue);
 		break;
 	}
 }
@@ -8476,39 +12508,39 @@ void MipsOpcodeFormatter::handleOpcodeParameters(const MipsOpcodeData& opData, c
 		switch (*encoding++)
 		{
 		case 'r':	// forced register
-			buffer += formatString(L"r%d",*encoding);
+			buffer += tfm::format("r%d",*encoding);
 			encoding += 1;
 			break;
 		case 's':	// register
-			buffer += regData.grs.name;
+			buffer += regData.grs.name.string();
 			break;
 		case 'd':	// register
-			buffer += regData.grd.name;
+			buffer += regData.grd.name.string();
 			break;
 		case 't':	// register
-			buffer += regData.grt.name;
+			buffer += regData.grt.name.string();
 			break;
 		case 'S':	// fpu register
-			buffer += regData.frs.name;
+			buffer += regData.frs.name.string();
 			break;
 		case 'D':	// fpu register
-			buffer += regData.frd.name;
+			buffer += regData.frd.name.string();
 			break;
 		case 'T':	// fpu register
-			buffer += regData.frt.name;
+			buffer += regData.frt.name.string();
 			break;
 		case 'v':	// psp vfpu reg
 		case 'm':	// vfpu matrix register
 			switch (*encoding++)
 			{
 			case 'd':
-				buffer += regData.vrd.name;
+				buffer += regData.vrd.name.string();
 				break;
 			case 's':
-				buffer += regData.vrs.name;
+				buffer += regData.vrs.name.string();
 				break;
 			case 't':
-				buffer += regData.vrt.name;
+				buffer += regData.vrt.name.string();
 				break;
 			}
 			break;
@@ -8516,13 +12548,13 @@ void MipsOpcodeFormatter::handleOpcodeParameters(const MipsOpcodeData& opData, c
 			switch (*encoding++)
 			{
 			case 'd':
-				buffer += regData.ps2vrd.name;
+				buffer += regData.ps2vrd.name.string();
 				break;
 			case 's':
-				buffer += regData.ps2vrs.name;
+				buffer += regData.ps2vrs.name.string();
 				break;
 			case 't':
-				buffer += regData.ps2vrt.name;
+				buffer += regData.ps2vrt.name.string();
 				break;
 			}
 			break;
@@ -8539,7 +12571,7 @@ void MipsOpcodeFormatter::handleOpcodeParameters(const MipsOpcodeData& opData, c
 			// TODO
 			break;
 		case 'w':	// 'wb' characters
-			buffer += L"wb";
+			buffer += "wb";
 			break;
 		default:
 			buffer += *(encoding-1);
@@ -8548,10 +12580,10 @@ void MipsOpcodeFormatter::handleOpcodeParameters(const MipsOpcodeData& opData, c
 	}
 }
 
-const std::wstring& MipsOpcodeFormatter::formatOpcode(const MipsOpcodeData& opData, const MipsRegisterData& regData,
+const std::string& MipsOpcodeFormatter::formatOpcode(const MipsOpcodeData& opData, const MipsRegisterData& regData,
 	const MipsImmediateData& immData)
 {
-	buffer = L"   ";
+	buffer = "   ";
 	handleOpcodeName(opData);
 
 	while (buffer.size() < 11)
@@ -8562,17 +12594,20 @@ const std::wstring& MipsOpcodeFormatter::formatOpcode(const MipsOpcodeData& opDa
 }
 
 // file: Archs/MIPS/PsxRelocator.cpp
+
+
+#include <cstring>
 #include <map>
 
 struct PsxLibEntry
 {
-	std::wstring name;
+	std::string name;
 	ByteArray data;
 };
 
 const unsigned char psxObjectFileMagicNum[6] = { 'L', 'N', 'K', '\x02', '\x2E', '\x07' };
 
-std::vector<PsxLibEntry> loadPsxLibrary(const std::wstring& inputName)
+std::vector<PsxLibEntry> loadPsxLibrary(const fs::path& inputName)
 {
 	ByteArray input = ByteArray::fromFile(inputName);
 	std::vector<PsxLibEntry> result;
@@ -8583,7 +12618,7 @@ std::vector<PsxLibEntry> loadPsxLibrary(const std::wstring& inputName)
 	if (memcmp(input.data(),psxObjectFileMagicNum,sizeof(psxObjectFileMagicNum)) == 0)
 	{
 		PsxLibEntry entry;
-		entry.name = getFileNameFromPath(inputName);
+		entry.name = inputName.filename().u8string();
 		entry.data = input;
 		result.push_back(entry);
 		return result;
@@ -8621,9 +12656,9 @@ std::vector<PsxLibEntry> loadPsxLibrary(const std::wstring& inputName)
 	return result;
 }
 
-size_t PsxRelocator::loadString(ByteArray& data, size_t pos, std::wstring& dest)
+size_t PsxRelocator::loadString(ByteArray& data, size_t pos, std::string& dest)
 {
-	dest = L"";
+	dest.clear();
 	int len = data[pos++];
 
 	for (int i = 0; i < len; i++)
@@ -8660,7 +12695,7 @@ bool PsxRelocator::parseObject(ByteArray data, PsxRelocatorFile& dest)
 				if (data[pos] != 8)
 					return false;
 
-				std::wstring& name = segments[segments.size()-1].name;
+				std::string& name = segments[segments.size()-1].name;
 				pos += 1 + loadString(data,pos+1,name);
 			}
 			break;
@@ -8875,14 +12910,13 @@ checkothertype:
 	return true;
 }
 
-bool PsxRelocator::init(const std::wstring& inputName)
+bool PsxRelocator::init(const fs::path& inputName)
 {
 	auto inputFiles = loadPsxLibrary(inputName);
+
+	// The ELF loader will report the error messages, if needed.
 	if (inputFiles.size() == 0)
-	{
-		Logger::printError(Logger::Error,L"Could not load library");
 		return false;
-	}
 
 	reloc = new MipsElfRelocator();
 
@@ -8891,32 +12925,50 @@ bool PsxRelocator::init(const std::wstring& inputName)
 		PsxRelocatorFile file;
 		file.name = entry.name;
 
-		if (parseObject(entry.data,file) == false)
-		{
-			Logger::printError(Logger::Error,L"Could not load object file %s",entry.name);
+		if (!parseObject(entry.data,file))
 			return false;
+
+		// sort relocations
+		for (PsxSegment& seg: file.segments)
+		{
+			auto sortFunc = [](const PsxRelocation &a, const PsxRelocation &b)
+			{
+				// Sort in order of...
+				// - reference type - symbol or offset
+				// - reference id - this groups references to the same symbol/segment/?
+				// - referencePos - this ensure references to the same offset are grouped
+				// - type - this ensures that HI16 is before LO16
+				auto tie = [](const PsxRelocation &rel)
+				{
+					return std::tie(rel.refType, rel.referenceId, rel.referencePos, rel.type);
+				};
+
+				return tie(a) < tie(b);
+			};
+
+			std::stable_sort(seg.relocations.begin(), seg.relocations.end(), sortFunc);
 		}
 
 		// init symbols
 		for (PsxSymbol& sym: file.symbols)
 		{
-			std::wstring lowered = sym.name;
-			std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::towlower);
+			std::string lowered = sym.name;
+			std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
 
-			sym.label = Global.symbolTable.getLabel(lowered,-1,-1);
+			sym.label = Global.symbolTable.getLabel(Identifier(lowered),-1,-1);
 			if (sym.label == nullptr)
 			{
-				Logger::printError(Logger::Error,L"Invalid label name \"%s\"",sym.name);
+				Logger::printError(Logger::Error, "Invalid label name \"%s\"",sym.name);
 				continue;
 			}
 
 			if (sym.label->isDefined() && sym.type != PsxSymbolType::External)
 			{
-				Logger::printError(Logger::Error,L"Label \"%s\" already defined",sym.name);
+				Logger::printError(Logger::Error, "Label \"%s\" already defined",sym.name);
 				continue;
 			}
 
-			sym.label->setOriginalName(sym.name);
+			sym.label->setOriginalName(Identifier(sym.name));
 		}
 
 		files.push_back(file);
@@ -8972,9 +13024,9 @@ bool PsxRelocator::relocateFile(PsxRelocatorFile& file, int& relocationAddress)
 				relocationAddress++;
 			break;
 		case PsxSymbolType::External:
-			if (sym.label->isDefined() == false)
+			if (!sym.label->isDefined())
 			{
-				Logger::queueError(Logger::Error,L"Undefined external symbol %s in file %s",sym.name,file.name);
+				Logger::queueError(Logger::Error, "Undefined external symbol %s in file %s",sym.name,file.name);
 				error = true;
 				continue;
 			}
@@ -9014,7 +13066,7 @@ bool PsxRelocator::relocateFile(PsxRelocatorFile& file, int& relocationAddress)
 				break;
 			}
 
-			std::vector<std::wstring> errors;
+			std::vector<std::string> errors;
 			bool result = false;
 
 			switch (rel.type)
@@ -9035,7 +13087,7 @@ bool PsxRelocator::relocateFile(PsxRelocatorFile& file, int& relocationAddress)
 
 			if (!result)
 			{
-				for (const std::wstring& error : errors)
+				for (const std::string& error : errors)
 				{
 					Logger::queueError(Logger::Error, error);
 				}
@@ -9044,10 +13096,10 @@ bool PsxRelocator::relocateFile(PsxRelocatorFile& file, int& relocationAddress)
 		}
 
 		// finish any dangling relocations
-		std::vector<std::wstring> errors;
+		std::vector<std::string> errors;
 		if (!reloc->finish(relocationActions, errors))
 		{
-			for (const std::wstring& error : errors)
+			for (const std::string& error : errors)
 			{
 				Logger::queueError(Logger::Error, error);
 			}
@@ -9078,7 +13130,7 @@ bool PsxRelocator::relocate(int& memoryAddress)
 
 	for (PsxRelocatorFile& file: files)
 	{
-		if (relocateFile(file,memoryAddress) == false)
+		if (!relocateFile(file,memoryAddress))
 			error = true;
 	}
 
@@ -9098,7 +13150,7 @@ void PsxRelocator::writeSymbols(SymbolData& symData) const
 		for (const PsxSymbol& sym: file.symbols)
 		{
 			if (sym.type != PsxSymbolType::External)
-				symData.addLabel(sym.label->getValue(),sym.name.c_str());
+				symData.addLabel(sym.label->getValue(), sym.name);
 		}
 	}
 }
@@ -9107,14 +13159,12 @@ void PsxRelocator::writeSymbols(SymbolData& symData) const
 // DirectivePsxObjImport
 //
 
-DirectivePsxObjImport::DirectivePsxObjImport(const std::wstring& fileName)
+DirectivePsxObjImport::DirectivePsxObjImport(const fs::path& fileName)
 {
-	if (rel.init(fileName))
-	{
-	}
+	success = rel.init(fileName);
 }
 
-bool DirectivePsxObjImport::Validate()
+bool DirectivePsxObjImport::Validate(const ValidateState &state)
 {
 	int memory = (int) g_fileManager->getVirtualAddress();
 	rel.relocate(memory);
@@ -9133,19 +13183,992 @@ void DirectivePsxObjImport::writeSymData(SymbolData& symData) const
 	rel.writeSymbols(symData);
 }
 
+// file: Archs/SuperH/SuperH.cpp
+
+
+CShArchitecture SuperH;
+
+CShArchitecture::CShArchitecture()
+{
+	version = SHARCH_INVALID;
+}
+
+std::unique_ptr<CAssemblerCommand> CShArchitecture::parseDirective(Parser& parser)
+{
+	ShParser shParser;
+	return shParser.parseDirective(parser);
+}
+
+std::unique_ptr<CAssemblerCommand> CShArchitecture::parseOpcode(Parser& parser)
+{
+	ShParser shParser;
+	return shParser.parseOpcode(parser);
+}
+
+void CShArchitecture::registerExpressionFunctions(ExpressionFunctionHandler &handler)
+{
+	registerShExpressionFunctions(handler);
+}
+
+void CShArchitecture::NextSection()
+{
+}
+
+void CShArchitecture::Revalidate()
+{
+}
+
+
+std::unique_ptr<IElfRelocator> CShArchitecture::getElfRelocator()
+{
+	switch (version)
+	{
+	case SHARCH_SATURN:
+		return std::make_unique<ShElfRelocator>();
+	default:
+		return nullptr;
+	}
+}
+
+// file: Archs/SuperH/CShInstruction.cpp
+
+
+CShInstruction::CShInstruction(ShOpcodeData& opcode, ShImmediateData& immediate, ShRegisterData& registers)
+{
+	this->opcodeData = opcode;
+	this->immediateData = immediate;
+	this->registerData = registers;
+}
+
+CShInstruction::~CShInstruction() = default;
+
+int CShInstruction::getImmediateBits(ShImmediateType type)
+{
+	switch (type)
+	{
+	case ShImmediateType::Immediate4:
+		return 4;
+	case ShImmediateType::Immediate8:
+		return 8;
+	case ShImmediateType::Immediate12:
+		return 12;
+	default:
+		return 0;
+	}
+}
+
+//
+// NOTE: SuperH *does* have delayed instructions, but
+//       I'm not entirely sure how they work exactly,
+//       so leaving this functionality, that was taken
+//		 from the MIPS parser, removed.
+//       Delayed opcodes are currently marked with the
+//       SH_DELAYED flag.
+//
+
+bool CShInstruction::Validate(const ValidateState &state)
+{
+	RamPos = g_fileManager->getVirtualAddress();
+	if (RamPos % 2)
+	{
+		Logger::queueError(Logger::Error, "opcode not aligned to word boundary");
+		return false;
+	}
+
+	bool memoryAdvanced = false;
+
+	// check immediates
+	if (immediateData.primary.type != ShImmediateType::None)
+	{
+		if (immediateData.primary.expression.isLoaded())
+		{
+			if (!immediateData.primary.expression.evaluateInteger(immediateData.primary.value))
+			{
+				Logger::queueError(Logger::Error, "Invalid immediate expression");
+				return false;
+			}
+
+			immediateData.primary.originalValue = immediateData.primary.value;
+		}
+
+		g_fileManager->advanceMemory(2);
+		memoryAdvanced = true;
+
+		int opflags = opcodeData.opcode.flags;
+		uint64_t immRelAddr = (opflags & SH_IMM32) ?
+							  ((RamPos+4) & 0xFFFFFFFFFFFFFFFC) :
+							   (RamPos+4);
+
+		if (opflags & SH_MUSTBEALIGNED)	// immediate must be aligned
+		{
+			if (opflags & SH_PCRELMANUAL)
+				immediateData.primary.value += (int)RamPos;
+
+			uint64_t value = immediateData.primary.value;
+
+			if ((opflags & SH_IMM16) && (value % 2))
+			{
+				Logger::queueError(Logger::Error, "Immediate must be 2-byte aligned");
+				return false;
+			}
+
+			if ((opflags & SH_IMM32) && (value % 4))
+			{
+				Logger::queueError(Logger::Error, "Immediate must be 4-byte aligned");
+				return false;
+			}
+		}
+
+		int immediateBits = getImmediateBits(immediateData.primary.type);
+		int maxImmediate = ((1 << immediateBits) - 1);
+
+		if (opflags & SH_IMMREL || opflags & SH_PCRELMANUAL) // relative
+		{
+			int range    = maxImmediate * (opflags & SH_IMM32 ? 4 : 2);
+			int hiRange  = (opflags & SH_IMMSIGNED) ?  (range/2) : range;
+			int lowRange = (opflags & SH_IMMSIGNED) ? -(range/2) : 0;
+
+			int64_t num = (int64_t) (immediateData.primary.value - immRelAddr);
+
+			if (num > hiRange || num < lowRange)
+			{
+				Logger::queueError(Logger::Error, "Branch/move target %08X out of range", immediateData.primary.value);
+				return false;
+			}
+			immediateData.primary.value = (int)num;
+		}
+
+		if (opflags & SH_IMM16)
+			immediateData.primary.value = immediateData.primary.value >> 1;
+		else if (opflags & SH_IMM32)
+			immediateData.primary.value = immediateData.primary.value >> 2;
+
+		unsigned int mask = (0xFFFFFFFF << (32-immediateBits)) >> (32-immediateBits);
+		int digits = (immediateBits+3) / 4;
+
+		if ((unsigned int)std::abs(immediateData.primary.value) > mask)
+		{
+			Logger::queueError(Logger::Error, "Immediate value 0x%0*X out of range",digits,immediateData.primary.value);
+			return false;
+		}
+
+		immediateData.primary.value &= mask;
+	}
+
+	if (!memoryAdvanced)
+		g_fileManager->advanceMemory(2);
+
+	return false;
+}
+
+void CShInstruction::Encode() const
+{
+	uint16_t encoding = opcodeData.opcode.base;
+
+	switch (opcodeData.opcode.format)
+	{
+	case SHFMT_0:     // xxxx xxxx xxxx xxxx
+		break;
+	case SHFMT_N:     // xxxx nnnn xxxx xxxx
+		encoding |= (registerData.grt.num & 0xF) << 8;
+		break;
+	case SHFMT_M:     // xxxx mmmm xxxx xxxx
+		encoding |= (registerData.grs.num & 0xF) << 8;
+		break;
+	case SHFMT_NM:    // xxxx nnnn mmmm xxxx
+		encoding |= (registerData.grt.num & 0xF) << 8;
+		encoding |= (registerData.grs.num & 0xF) << 4;
+		break;
+	case SHFMT_MD:    // xxxx xxxx mmmm dddd
+		encoding |= (registerData.grs.num & 0xF) << 4;
+		encoding |= immediateData.primary.value;
+		break;
+	case SHFMT_ND4:   // xxxx xxxx nnnn dddd
+		encoding |= (registerData.grt.num & 0xF) << 4;
+		encoding |= immediateData.primary.value;
+		break;
+	case SHFMT_NMD:   // xxxx nnnn mmmm dddd
+		encoding |= (registerData.grt.num & 0xF) << 8;
+		encoding |= (registerData.grs.num & 0xF) << 4;
+		encoding |= immediateData.primary.value;
+		break;
+	case SHFMT_D:     // xxxx xxxx dddd dddd
+	case SHFMT_D12:   // xxxx dddd dddd dddd
+		encoding |= immediateData.primary.value;
+		break;
+	case SHFMT_ND8:   // xxxx nnnn dddd dddd
+		encoding |= (registerData.grt.num & 0xF) << 8;
+		encoding |= immediateData.primary.value;
+		break;
+	case SHFMT_I:     // xxxx xxxx iiii iiii
+		encoding |= immediateData.primary.value;
+		break;
+	case SHFMT_NI:    // xxxx nnnn iiii iiii
+		encoding |= (registerData.grt.num & 0xF) << 8;
+		encoding |= immediateData.primary.value;
+		break;
+	}
+
+	g_fileManager->writeU16((uint16_t)encoding);
+}
+
+void CShInstruction::writeTempData(TempData& tempData) const
+{
+	ShOpcodeFormatter formatter;
+	tempData.writeLine(RamPos, formatter.formatOpcode(opcodeData,registerData,immediateData));
+}
+
+// file: Archs/SuperH/ShParser.cpp
+
+#define CHECK(exp) if (!(exp)) return false;
+
+static const char *shSpecialForcedRegisters[] =
+{
+	"r0", "sr", "gbr", "vbr", "mach", "macl", "pr", "pc", nullptr
+};
+
+const ShRegisterDescriptor shRegisters[] = {
+	{ "r0",  0 },   { "r1",  1},   { "r2",  2 },  { "r3",  3 },
+	{ "r4",  4 },   { "r5",  5},   { "r6",  6 },  { "r7",  7 },
+	{ "r8",  8 },   { "r9",  9},   { "r10", 10 }, { "r11", 11 },
+	{ "r12", 12 },  { "r13", 13},  { "r14", 14 }, { "r15", 15 },
+	{ "@r0",  0 },   { "@r1",  1},   { "@r2",  2 },  { "@r3",  3 },
+	{ "@r4",  4 },   { "@r5",  5},   { "@r6",  6 },  { "@r7",  7 },
+	{ "@r8",  8 },   { "@r9",  9},   { "@r10", 10 }, { "@r11", 11 },
+	{ "@r12", 12 },  { "@r13", 13},  { "@r14", 14 }, { "@r15", 15 },
+};
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveShImportObj(Parser& parser, int flags)
+{
+	std::vector<Expression> list;
+	if (!parser.parseExpressionList(list,1,2))
+		return nullptr;
+
+	StringLiteral inputName;
+	if (!list[0].evaluateString(inputName,true))
+		return nullptr;
+
+	if (list.size() == 2)
+	{
+		Identifier ctorName;
+		if (!list[1].evaluateIdentifier(ctorName))
+			return nullptr;
+
+		return std::make_unique<DirectiveObjImport>(inputName.path(),ctorName);
+	}
+
+	return std::make_unique<DirectiveObjImport>(inputName.path());
+}
+
+const DirectiveMap shDirectives = {
+	{ ".importobj",		{ &parseDirectiveShImportObj,		0 } },
+	{ ".importlib",		{ &parseDirectiveShImportObj,		0 } },
+};
+
+std::unique_ptr<CAssemblerCommand> ShParser::parseDirective(Parser& parser)
+{
+	return parser.parseDirective(shDirectives);
+}
+
+bool ShParser::parseRegisterTable(Parser& parser, ShRegisterValue& dest, const ShRegisterDescriptor* table, size_t count)
+{
+	const Token &token = parser.peekToken(0);
+
+	if (token.type != TokenType::Identifier)
+		return false;
+
+	const auto &identifier = token.identifierValue();
+	for (size_t i = 0; i < count; i++)
+	{
+		if (identifier == table[i].name)
+		{
+			dest.name = identifier;
+			dest.num = table[i].num;
+			parser.eatToken();
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool ShParser::parseRegister(Parser& parser, ShRegisterValue& dest)
+{
+	dest.type = ShRegisterType::Normal;
+	return parseRegisterTable(parser, dest, shRegisters, 32);
+}
+
+bool ShParser::parseImmediate(Parser& parser, Expression& dest)
+{
+	// check for (reg) or reg sequence
+	TokenizerPosition pos = parser.getTokenizer()->getPosition();
+
+	bool hasParen = parser.peekToken().type == TokenType::LParen;
+	if (hasParen)
+		parser.eatToken();
+
+	ShRegisterValue tempValue;
+	bool isRegister = parseRegister(parser,tempValue);
+	parser.getTokenizer()->setPosition(pos);
+
+	if (isRegister)
+		return false;
+
+	dest = parser.parseExpression();
+	return dest.isLoaded();
+}
+
+bool ShParser::matchSymbol(Parser& parser, char symbol)
+{
+	switch (symbol)
+	{
+	case '(':
+		return parser.matchToken(TokenType::LParen);
+	case ')':
+		return parser.matchToken(TokenType::RParen);
+	case ',':
+		return parser.matchToken(TokenType::Comma);
+	case '#':
+		return parser.matchToken(TokenType::Hash);
+	case '-':
+		return parser.matchToken(TokenType::Minus);
+	case '+':
+		return parser.matchToken(TokenType::Plus);
+	}
+
+	return false;
+}
+
+static bool decodeImmediateSize(const char*& encoding, ShImmediateType& dest)
+{
+	int num = 0;
+	while (*encoding >= '0' && *encoding <= '9')
+	{
+		num = num*10 + *encoding-'0';
+		encoding++;
+	}
+
+	switch (num)
+	{
+	case 4:
+		dest = ShImmediateType::Immediate4;
+		break;
+	case 8:
+		dest = ShImmediateType::Immediate8;
+		break;
+	case 12:
+		dest = ShImmediateType::Immediate12;
+		break;
+	default:
+		return false;
+	}
+
+	return true;
+}
+
+bool ShParser::decodeOpcode(Parser& parser, const tShOpcode& opcode)
+{
+	const char* encoding = opcode.name;
+	size_t pos = 0;
+
+	registers.reset();
+	immediate.reset();
+	opcodeData.reset();
+
+	const Token &token = parser.nextToken();
+	if (token.type != TokenType::Identifier)
+		return false;
+
+	const Identifier &identifier = token.identifierValue();
+	std::string name = identifier.string();
+
+	while (*encoding != 0)
+	{
+		switch (*encoding++)
+		{
+		case '/':
+			CHECK(pos >= name.size());
+			CHECK(parser.nextToken().type == TokenType::Div);
+			CHECK(parser.peekToken().type == TokenType::Identifier);
+
+			name = parser.nextToken().identifierValue().string();
+			pos = 0;
+			break;
+		default:
+			CHECK(pos < name.size());
+			CHECK(*(encoding-1) == name[pos++]);
+			break;
+		}
+	}
+
+	return pos >= name.size();
+}
+
+bool ShParser::parseParameters(Parser& parser, const tShOpcode& opcode)
+{
+	const char* encoding = opcode.encoding;
+
+	// initialize opcode variables
+	immediate.primary.type = ShImmediateType::None;
+
+	while (*encoding != 0)
+	{
+		// Some registers in instructions are forced
+		// and do not have a numerical representation (except for r0.)
+		// This handles said forced registers.
+		if (opcode.flags & SH_FREG)
+		{
+			const char **fReg = shSpecialForcedRegisters;
+			const Token &token = parser.peekToken();
+			bool skip = false;
+			while (*fReg)
+			{
+				size_t length = strlen(*fReg);
+				if (memcmp(*fReg, encoding, length) == 0)
+				{
+					if (token.type != TokenType::Identifier)
+						break;
+
+					const auto &identifier = token.identifierValue();
+					if (identifier.string() == std::string(*fReg))
+					{
+						skip = true;
+						encoding += length;
+						parser.eatToken();
+						break;
+					}
+					break;
+				}
+				fReg += 1;
+			}
+			if (skip)
+				continue;
+		}
+
+		switch (*encoding++)
+		{
+		case 't':	// register
+			CHECK(parseRegister(parser,registers.grt));
+			break;
+		case 's':	// register
+			CHECK(parseRegister(parser,registers.grs));
+			break;
+		case 'i':	// primary immediate
+			CHECK(parseImmediate(parser,immediate.primary.expression));
+			CHECK(decodeImmediateSize(encoding,immediate.primary.type));
+			break;
+		case '@':
+			// '@' is not a separate token, and at the same time it's
+			// part of the SuperH instruction parameter scheme,
+			// so I came up with this rather ugly solution to handle it.
+			if (parser.peekToken().type != TokenType::Identifier)
+				return false;
+			if (parser.peekToken().identifierValue().string()[0] != '@')
+				return false;
+			if (*encoding == 't')
+			{
+				CHECK(parseRegister(parser,registers.grt));
+			}
+			else if (*encoding == 's')
+			{
+				CHECK(parseRegister(parser,registers.grs));
+			}
+			else if (*encoding == '(' || *encoding == '-') // "mov.* r0,@(i4,t)", "mov.* s,@-t" and the others
+			{
+				parser.eatToken();
+				CHECK(matchSymbol(parser, *encoding));
+			}
+			else
+			{
+				return false;
+			}
+			encoding++;
+			break;
+		default:
+			CHECK(matchSymbol(parser,*(encoding-1)));
+			break;
+		}
+	}
+
+	opcodeData.opcode = opcode;
+
+	// the next token has to be a separator, else the parameters aren't
+	// completely parsed
+
+	return parser.nextToken().type == TokenType::Separator;
+
+}
+
+std::unique_ptr<CShInstruction> ShParser::parseOpcode(Parser& parser)
+{
+	if (parser.peekToken().type != TokenType::Identifier)
+		return nullptr;
+
+	const ShArchDefinition& arch = shArchs[SuperH.getVersion()];
+	const Token &token = parser.peekToken();
+
+	bool paramFail = false;
+	for (int z = 0; shOpcodes[z].name != nullptr; z++)
+	{
+		if ((shOpcodes[z].archs & arch.supportSets) == 0)
+			continue;
+		if ((shOpcodes[z].archs & arch.excludeMask) != 0)
+			continue;
+
+		TokenizerPosition tokenOpcodePos = parser.getTokenizer()->getPosition();
+		if (decodeOpcode(parser, shOpcodes[z]))
+		{
+			TokenizerPosition tokenPos = parser.getTokenizer()->getPosition();
+
+			if (parseParameters(parser,shOpcodes[z]))
+			{
+				// success, return opcode
+				return std::make_unique<CShInstruction>(opcodeData,immediate,registers);
+			}
+
+			parser.getTokenizer()->setPosition(tokenPos);
+			paramFail = true;
+		}
+		parser.getTokenizer()->setPosition(tokenOpcodePos);
+	}
+
+	if (paramFail)
+		parser.printError(token, "SuperH parameter failure");
+	else
+		parser.printError(token, "Invalid SuperH opcode");
+
+	return nullptr;
+}
+
+void ShOpcodeFormatter::handleOpcodeName(const ShOpcodeData& opData)
+{
+	const char* encoding = opData.opcode.name;
+
+	while (*encoding++ != 0)
+	{
+		buffer += *(encoding-1);
+	}
+}
+
+void ShOpcodeFormatter::handleImmediate(ShImmediateType type, unsigned int originalValue, unsigned int opcodeFlags)
+{
+	buffer += tfm::format("0x%X", originalValue);
+}
+
+void ShOpcodeFormatter::handleOpcodeParameters(const ShOpcodeData& opData, const ShRegisterData& regData,
+	const ShImmediateData& immData)
+{
+	const char* encoding = opData.opcode.encoding;
+
+	ShImmediateType type;
+	while (*encoding != 0)
+	{
+		switch (*encoding++)
+		{
+		case 's':	// register
+			if (*encoding == 'r')
+			{
+				buffer += "sr";
+				encoding += 1;
+				break;
+			}
+			buffer += regData.grs.name.string();
+			break;
+		case 't':	// register
+			buffer += regData.grt.name.string();
+			break;
+		case 'i':	// primary immediate
+			decodeImmediateSize(encoding,type);
+			handleImmediate(immData.primary.type,immData.primary.originalValue,opData.opcode.flags);
+			break;
+		default:
+			buffer += *(encoding-1);
+			break;
+		}
+	}
+}
+
+const std::string& ShOpcodeFormatter::formatOpcode(const ShOpcodeData& opData, const ShRegisterData& regData,
+	const ShImmediateData& immData)
+{
+	buffer = "   ";
+	handleOpcodeName(opData);
+
+	while (buffer.size() < 11)
+		buffer += ' ';
+
+	handleOpcodeParameters(opData,regData,immData);
+	return buffer;
+}
+
+// file: Archs/SuperH/ShOpcodes.cpp
+
+const tShOpcode shOpcodes[] = {
+	// MOVE IMMEDIATE
+	{ "mov",	"#i8,t",		0b1110000000000000, SHFMT_NI,	SH_SUPERH1, 0 },
+	{ "mov",	"i8,t",			0b1110000000000000, SHFMT_NI,	SH_SUPERH1, 0 },
+	{ "mov.w",	"i8,t",			0b1001000000000000, SHFMT_ND8,	SH_SUPERH1, SH_IMM16|SH_IMMREL },
+	{ "mov.l",	"i8,t",			0b1101000000000000, SHFMT_ND8,	SH_SUPERH1, SH_IMM32|SH_IMMREL },
+
+	// Additional variations of the same instructions
+	// for specifying relative offset manually.
+	{ "mov.w",	"@(i8,pc),t",	0b1001000000000000, SHFMT_ND8,	SH_SUPERH1, SH_FREG|SH_IMM16|SH_PCRELMANUAL },
+	{ "mov.l",	"@(i8,pc),t",	0b1101000000000000, SHFMT_ND8,	SH_SUPERH1, SH_FREG|SH_IMM32|SH_PCRELMANUAL },
+
+	// MOVE Data
+	{ "mov",	"s,t",			0b0110000000000011, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "mov.b",	"s,@t",			0b0010000000000000, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.w",	"s,@t",			0b0010000000000001, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.l",	"s,@t",			0b0010000000000010, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "mov.b",	"@s,t",			0b0110000000000000, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.w",	"@s,t",			0b0110000000000001, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.l",	"@s,t",			0b0110000000000010, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "mov.b",	"s,@-t",		0b0010000000000100, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.w",	"s,@-t",		0b0010000000000101, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.l",	"s,@-t",		0b0010000000000110, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "mov.b",	"@s+,t",		0b0110000000000100, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.w",	"@s+,t",		0b0110000000000101, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mov.l",	"@s+,t",		0b0110000000000110, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "mov.b",	"r0,@(i4,t)",	0b1000000000000000, SHFMT_ND4,	SH_SUPERH1, SH_FREG },
+	{ "mov.w",	"r0,@(i4,t)",	0b1000000100000000, SHFMT_ND4,	SH_SUPERH1, SH_IMM16|SH_FREG },
+	{ "mov.l",	"s,@(i4,t)",	0b0001000000000000, SHFMT_NMD,	SH_SUPERH1, SH_IMM32|SH_FREG },
+
+	{ "mov.b",	"@(i4,t),r0",	0b1000010000000000, SHFMT_ND4,	SH_SUPERH1, SH_FREG },
+	{ "mov.w",	"@(i4,t),r0",	0b1000010100000000, SHFMT_ND4,	SH_SUPERH1, SH_IMM16|SH_FREG },
+	{ "mov.l",	"@(i4,s),t",	0b0101000000000000, SHFMT_NMD,	SH_SUPERH1, SH_IMM32|SH_FREG },
+
+	{ "mov.b",	"s,@(r0,t)",	0b0000000000000100, SHFMT_NM,	SH_SUPERH1, SH_FREG },
+	{ "mov.w",	"s,@(r0,t)",	0b0000000000000101, SHFMT_NM,	SH_SUPERH1, SH_FREG },
+	{ "mov.l",	"s,@(r0,t)",	0b0000000000000110, SHFMT_NM,	SH_SUPERH1, SH_FREG },
+
+	{ "mov.b",	"@(r0,s),t",	0b0000000000001100, SHFMT_NM,	SH_SUPERH1, SH_FREG },
+	{ "mov.w",	"@(r0,s),t",	0b0000000000001101, SHFMT_NM,	SH_SUPERH1, SH_FREG },
+	{ "mov.l",	"@(r0,s),t",	0b0000000000001110, SHFMT_NM,	SH_SUPERH1, SH_FREG },
+
+	{ "mov.b",	"r0,@(i8,gbr)",	0b1100000000000000, SHFMT_D,	SH_SUPERH1, SH_FREG },
+	{ "mov.w",	"r0,@(i8,gbr)",	0b1100000100000000, SHFMT_D,	SH_SUPERH1, SH_IMM16|SH_FREG },
+	{ "mov.l",	"r0,@(i8,gbr)",	0b1100001000000000, SHFMT_D,	SH_SUPERH1, SH_IMM32|SH_FREG },
+
+	{ "mov.b",	"@(i8,gbr),r0",	0b1100010000000000, SHFMT_D,	SH_SUPERH1, SH_FREG },
+	{ "mov.w",	"@(i8,gbr),r0",	0b1100010100000000, SHFMT_D,	SH_SUPERH1, SH_IMM16|SH_FREG },
+	{ "mov.l",	"@(i8,gbr),r0",	0b1100011000000000, SHFMT_D,	SH_SUPERH1, SH_IMM32|SH_FREG },
+
+	{ "mova",	"i8,r0",		0b1100011100000000, SHFMT_D,	SH_SUPERH1, SH_IMM32|SH_FREG|SH_IMMREL },
+	{ "mova",	"@(i8,pc),r0",	0b1100011100000000, SHFMT_D,	SH_SUPERH1, SH_IMM32|SH_FREG|SH_PCRELMANUAL },
+
+	{ "movt",	"t",			0b0000000000101001, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "swap.b",	"s,t",			0b0110000000001000, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "swap.w",	"s,t",			0b0110000000001001, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "xtrct",	"s,t",			0b0010000000001101, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "add",	"s,t",			0b0011000000001100, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "add",	"#i8,t",		0b0111000000000000, SHFMT_NI,	SH_SUPERH1, 0 },
+	{ "add",	"i8,t",			0b0111000000000000, SHFMT_NI,	SH_SUPERH1, 0 },
+	{ "addc",	"s,t",			0b0011000000001110, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "addv",	"s,t",			0b0011000000001111, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "cmp/eq",	"#i8,r0",		0b1000100000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "cmp/eq",	"i8,r0",		0b1000100000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "cmp/eq",	"s,t",			0b0011000000000000, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "cmp/hs",	"s,t",			0b0011000000000010, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "cmp/ge",	"s,t",			0b0011000000000011, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "cmp/hi",	"s,t",			0b0011000000000110, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "cmp/gt",	"s,t",			0b0011000000000111, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "cmp/pl",	"t",			0b0100000000010101, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "cmp/pz",	"t",			0b0100000000010001, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "cmp/str","s,t",			0b0010000000001100, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "div1",	"s,t",			0b0011000000000100, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "div0s",	"s,t",			0b0010000000000111, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "div0u",	"",				0b0000000000011001, SHFMT_0,	SH_SUPERH1, 0 },
+
+	{ "dmuls.l","s,t",			0b0011000000001101, SHFMT_NM,	SH_SUPERH2, 0 },
+	{ "dmulu.l","s,t",			0b0011000000000101, SHFMT_NM,	SH_SUPERH2, 0 },
+	{ "dt",		"t",			0b0100000000010000, SHFMT_N,	SH_SUPERH2, 0 },
+	{ "exts.b",	"s,t",			0b0110000000001110, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "exts.w",	"s,t",			0b0110000000001111, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "extu.b",	"s,t",			0b0110000000001100, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "extu.w",	"s,t",			0b0110000000001101, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mac.l",	"@s+,@t+",		0b0000000000001111, SHFMT_NM,	SH_SUPERH2, 0 },
+	{ "mac.w",	"@s+,@t+",		0b0100000000001111, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mul.l",	"s,t",			0b0000000000000111, SHFMT_NM,	SH_SUPERH2, 0 },
+	{ "muls.w",	"s,t",			0b0010000000001111, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "mulu.w",	"s,t",			0b0010000000001110, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "neg",	"s,t",			0b0110000000001011, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "negc",	"s,t",			0b0110000000001010, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "sub",	"s,t",			0b0011000000001000, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "subc",	"s,t",			0b0011000000001010, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "subv",	"s,t",			0b0011000000001011, SHFMT_NM,	SH_SUPERH1, 0 },
+
+	{ "and",	"s,t",			0b0010000000001001, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "and",	"#i8,r0",		0b1100100100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "and.b",	"#i8,@(r0,gbr)",0b1100110100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "and",	"i8,r0",		0b1100100100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "and.b",	"i8,@(r0,gbr)",	0b1100110100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "not",	"s,t",			0b0110000000000111, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "or",		"s,t",			0b0010000000001011, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "or",		"#i8,r0",		0b1100101100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "or.b",	"#i8,@(r0,gbr)",0b1100111100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "or",		"i8,r0",		0b1100101100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "or.b",	"i8,@(r0,gbr)",	0b1100111100000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "tas.b",	"@t",			0b0100000000011011, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "tst",	"s,t",			0b0010000000001000, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "tst",	"#i8,r0",		0b1100100000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "tst.b",	"#i8,@(r0,gbr)",0b1100110000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "tst",	"i8,r0",		0b1100100000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "tst.b",	"i8,@(r0,gbr)",0b1100110000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "xor",	"s,t",			0b0010000000001010, SHFMT_NM,	SH_SUPERH1, 0 },
+	{ "xor",	"#i8,r0",		0b1100101000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "xor.b",	"#i8,@(r0,gbr)",0b1100111000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "xor",	"i8,r0",		0b1100101000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+	{ "xor.b",	"i8,@(r0,gbr)",	0b1100111000000000, SHFMT_I,	SH_SUPERH1, SH_FREG },
+
+	{ "rotl",	"t",			0b0100000000000100, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "rotr",	"t",			0b0100000000000101, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "rotcl",	"t",			0b0100000000100100, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "rotcr",	"t",			0b0100000000100101, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shal",	"t",			0b0100000000100000, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shar",	"t",			0b0100000000100001, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shll",	"t",			0b0100000000000000, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shlr",	"t",			0b0100000000000001, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shll2",	"t",			0b0100000000001000, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shlr2",	"t",			0b0100000000001001, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shll8",	"t",			0b0100000000011000, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shlr8",	"t",			0b0100000000011001, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shll16",	"t",			0b0100000000101000, SHFMT_N,	SH_SUPERH1, 0 },
+	{ "shlr16",	"t",			0b0100000000101001, SHFMT_N,	SH_SUPERH1, 0 },
+
+	{ "bf",		"i8",			0b1000101100000000, SHFMT_D,	SH_SUPERH1, SH_IMM16|SH_IMMREL|SH_IMMSIGNED },
+	{ "bf/s",	"i8",			0b1000111100000000, SHFMT_D,	SH_SUPERH2, SH_IMM16|SH_IMMREL|SH_IMMSIGNED|SH_DELAYED },
+	{ "bt",		"i8",			0b1000100100000000, SHFMT_D,	SH_SUPERH1, SH_IMM16|SH_IMMREL|SH_IMMSIGNED },
+	{ "bt/s",	"i8",			0b1000110100000000, SHFMT_D,	SH_SUPERH2, SH_IMM16|SH_IMMREL|SH_IMMSIGNED|SH_DELAYED },
+	{ "bra",	"i12",			0b1010000000000000, SHFMT_D12,	SH_SUPERH1, SH_IMM16|SH_IMMREL|SH_IMMSIGNED|SH_DELAYED },
+	{ "bsr",	"i12",			0b1011000000000000, SHFMT_D12,	SH_SUPERH1, SH_IMM16|SH_IMMREL|SH_IMMSIGNED },
+
+	{ "braf",	"s",			0b0000000000100011, SHFMT_M,	SH_SUPERH2,	SH_DELAYED },
+	{ "bsrf",	"s",			0b0000000000000011, SHFMT_M,	SH_SUPERH2,	SH_DELAYED },
+	{ "jmp",	"s",			0b0100000000101011, SHFMT_M,	SH_SUPERH1, SH_DELAYED },
+	{ "jsr",	"s",			0b0100000000001011, SHFMT_M,	SH_SUPERH1, SH_DELAYED },
+
+	// Aliases of the previous 4
+	{ "braf",	"@s",			0b0000000000100011, SHFMT_M,	SH_SUPERH2,	SH_DELAYED },
+	{ "bsrf",	"@s",			0b0000000000000011, SHFMT_M,	SH_SUPERH2,	SH_DELAYED },
+	{ "jmp",	"@s",			0b0100000000101011, SHFMT_M,	SH_SUPERH1, SH_DELAYED },
+	{ "jsr",	"@s",			0b0100000000001011, SHFMT_M,	SH_SUPERH1, SH_DELAYED },
+
+	{ "rts",	"",				0b0000000000001011, SHFMT_0,	SH_SUPERH1, SH_DELAYED },
+
+	{ "clrt",	"",				0b0000000000001000, SHFMT_0,	SH_SUPERH1, 0 },
+	{ "clrmac",	"",				0b0000000000101000, SHFMT_0,	SH_SUPERH1, 0 },
+
+	{ "ldc",	"s,sr",			0b0100000000001110, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "ldc",	"s,gbr",		0b0100000000011110, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "ldc",	"s,vbr"	,		0b0100000000101110, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "ldc.l",	"@s+,sr",		0b0100000000000111, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "ldc.l",	"@s+,gbr",		0b0100000000010111, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "ldc.l",	"@s+,vbr",		0b0100000000100111, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "lds",	"s,mach",		0b0100000000001010, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "lds",	"s,macl",		0b0100000000011010, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "lds",	"s,pr",			0b0100000000101010, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "lds.l",	"@s+,mach",		0b0100000000000110, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "lds.l",	"@s+,macl",		0b0100000000010110, SHFMT_M,	SH_SUPERH1, SH_FREG },
+	{ "lds.l",	"@s+,pr",		0b0100000000100110, SHFMT_M,	SH_SUPERH1, SH_FREG },
+
+	{ "nop",	"",				0b0000000000001001, SHFMT_0,	SH_SUPERH1, 0 },
+	{ "rte",	"",				0b0000000000101011, SHFMT_0,	SH_SUPERH1, SH_DELAYED },
+	{ "sett",	"",				0b0000000000011000, SHFMT_0,	SH_SUPERH1, 0 },
+	{ "sleep",	"",				0b0000000000011011, SHFMT_0,	SH_SUPERH1, 0 },
+
+	{ "stc",	"sr,t",			0b0000000000000010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "stc",	"gbr,t",		0b0000000000010010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "stc",	"vbr,t",		0b0000000000100010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "stc.l",	"sr,@-t",		0b0100000000000011, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "stc.l",	"gbr,@-t",		0b0100000000010011, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "stc.l",	"vbr,@-t",		0b0100000000100011, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "sts",	"mach,t",		0b0000000000001010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "sts",	"macl,t",		0b0000000000011010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "sts",	"pr,t",			0b0000000000101010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "sts.l",	"mach,@-t",		0b0100000000000010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "sts.l",	"macl,@-t",		0b0100000000010010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+	{ "sts.l",	"pr,@-t",		0b0100000000100010, SHFMT_N,	SH_SUPERH1, SH_FREG },
+
+	{ "trapa",	"#i8",			0b1100001100000000, SHFMT_I,	SH_SUPERH1, 0 },
+	// END
+    { nullptr, nullptr, 0, 0, 0, 0 },
+};
+
+const ShArchDefinition shArchs[] = {
+	// SHARCH_SATURN
+	{ "SATURN",		SH_SUPERH2|SH_SUPERH1, 0, 0 },
+	// SHARCH_INVALID
+	{ "Invalid",	0, 0 },
+};
+
+// file: Archs/SuperH/ShElfRelocator.cpp
+
+
+int ShElfRelocator::expectedMachine() const
+{
+	return EM_SH2;
+}
+
+bool ShElfRelocator::relocateOpcode(int type, const RelocationData& data, std::vector<RelocationAction>& actions, std::vector<std::string>& errors)
+{
+	unsigned int op = data.opcode;
+	bool result = true;
+
+	switch (type)
+	{
+	case R_SH_DIR32:
+		op += (int) (data.relocationBase + data.addend);
+		break;
+	case R_SH_REL32:
+		// NOTE: I'm not entirely sure whether this is a correct way of doing this,
+		//       so far I haven't encountered this relocation type in any of the
+		//       object files I tested.
+		op += (int) (data.relocationBase - data.opcodeOffset + data.addend);
+		break;
+	default:
+		errors.emplace_back(tfm::format("Unknown SuperH relocation type %d",type));
+		return false;
+	}
+
+	actions.emplace_back(data.opcodeOffset, op);
+	return result;
+}
+
+void ShElfRelocator::setSymbolAddress(RelocationData& data, int64_t symbolAddress, int symbolType)
+{
+	data.symbolAddress = symbolAddress;
+	data.targetSymbolType = symbolType;
+}
+
+bool ShElfRelocator::finish(std::vector<RelocationAction>& actions, std::vector<std::string>& errors)
+{
+	return true;
+}
+
+//
+//	WARNING: NOT TESTED!!!!!
+//
+const char* shCtorTemplate = R"(
+	mov.l	r8,@-r15
+	mov.l	r9,@-r15
+	mov.l	r10,@-r15
+	mov.l	r11,@-r15
+	sts.l	pr,@-r15
+	mova	%ctorTable%,r0
+	mov		r0,r8
+	mova	%ctorTable%+%ctorTableSize%,r0
+	mov		r0,r9
+	%outerLoopLabel%:
+	mov.l	@r8,r10
+	mov.l	@(4,r9),r11
+	add		#8,r8
+	%innerLoopLabel%:
+	mov.l	@r10,r4
+	jsr		r4
+	add		#4,r10
+	cmp/eq 	r10,r11
+	bf		%innerLoopLabel%
+	cmp/eq	r8,r9
+	bf		%outerLoopLabel%
+	lds.l	@r15+,pr
+	mov.l	@r15+,r11
+	mov.l	@r15+,r10
+	mov.l	@r15+,r9
+	rts
+	mov.l	@r15+,r8
+	.align 4
+	%ctorTable%:
+	.word	%ctorContent%
+)";
+
+std::unique_ptr<CAssemblerCommand> ShElfRelocator::generateCtorStub(std::vector<ElfRelocatorCtor>& ctors)
+{
+	Parser parser;
+	if (ctors.size() != 0)
+	{
+		// create constructor table
+		std::string table;
+		for (size_t i = 0; i < ctors.size(); i++)
+		{
+			if (i != 0)
+				table += ',';
+			table += tfm::format("%s,%s+0x%08X",ctors[i].symbolName,ctors[i].symbolName,ctors[i].size);
+		}
+
+		return parser.parseTemplate(shCtorTemplate,{
+			{ "%ctorTable%",		Global.symbolTable.getUniqueLabelName().string() },
+			{ "%ctorTableSize%",	tfm::format("%d",ctors.size()*8) },
+			{ "%outerLoopLabel%",	Global.symbolTable.getUniqueLabelName().string() },
+			{ "%innerLoopLabel%",	Global.symbolTable.getUniqueLabelName().string() },
+			{ "%ctorContent%",		table },
+		});
+	} else {
+		return parser.parseTemplate("rts :: nop");
+	}
+}
+
+// file: Archs/SuperH/ShExpressionFunctions.cpp
+
+
+#define GET_PARAM(params,index,dest) \
+	if (getExpFuncParameter(params,index,dest,funcName,false) == false) \
+		return ExpressionValue();
+
+/*
+const ExpressionFunctionEntry shExpressionFunctions[] = {
+};
+*/
+
+void registerShExpressionFunctions(ExpressionFunctionHandler &handler)
+{
+/*
+	for (const auto &func : shExpressionFunctions)
+	{
+		handler.addFunction(Identifier(func.name), func.function, func.minParams, func.maxParams, func.safety);
+	}
+*/
+}
+
 // file: Archs/Architecture.cpp
+
 
 CInvalidArchitecture InvalidArchitecture;
 
-ArchitectureCommand::ArchitectureCommand(const std::wstring& tempText, const std::wstring& symText)
+Architecture *Architecture::currentArchitecture = &InvalidArchitecture;
+
+Architecture &Architecture::current()
 {
-	this->tempText = tempText;
-	this->symText = symText;
-	this->endianness = Arch->getEndianness();
+	assert(currentArchitecture);
+	return *currentArchitecture;
 }
 
-bool ArchitectureCommand::Validate()
+void Architecture::setCurrent(Architecture &arch)
 {
+	currentArchitecture = &arch;
+	ExpressionFunctionHandler::instance().updateArchitecture();
+}
+
+void Architecture::registerExpressionFunctions([[maybe_unused]] ExpressionFunctionHandler &handler)
+{
+}
+
+ArchitectureCommand::ArchitectureCommand(const std::string& tempText, const std::string& symText)
+	: tempText(tempText), symText(symText)
+{
+	this->architecture = &Architecture::current();
+	this->endianness = Architecture::current().getEndianness();
+}
+
+bool ArchitectureCommand::Validate(const ValidateState &state)
+{
+	Architecture::setCurrent(*architecture);
 	position = g_fileManager->getVirtualAddress();
 	g_fileManager->setEndianness(endianness);
 	return false;
@@ -9160,10 +14183,10 @@ void ArchitectureCommand::writeTempData(TempData& tempData) const
 {
 	if (tempText.size() != 0)
 	{
-		std::wstringstream stream(tempText);
+		std::stringstream stream(tempText);
 
-		std::wstring line;
-		while (std::getline(stream,line,L'\n'))
+		std::string line;
+		while (std::getline(stream,line,'\n'))
 		{
 			if (line.size() != 0)
 				tempData.writeLine(position,line);
@@ -9184,27 +14207,27 @@ void ArchitectureCommand::writeSymData(SymbolData& symData) const
 
 void CInvalidArchitecture::NextSection()
 {
-	Logger::printError(Logger::FatalError,L"No architecture specified");
+	Logger::printError(Logger::FatalError, "No architecture specified");
 }
 
 void CInvalidArchitecture::Pass2()
 {
-	Logger::printError(Logger::FatalError,L"No architecture specified");
+	Logger::printError(Logger::FatalError, "No architecture specified");
 }
 
 void CInvalidArchitecture::Revalidate()
 {
-	Logger::printError(Logger::FatalError,L"No architecture specified");
+	Logger::printError(Logger::FatalError, "No architecture specified");
 }
 
 std::unique_ptr<IElfRelocator> CInvalidArchitecture::getElfRelocator()
 {
-	Logger::printError(Logger::FatalError,L"No architecture specified");
+	Logger::printError(Logger::FatalError, "No architecture specified");
 	return nullptr;
 }
 
-
 // file: Commands/CAssemblerCommand.cpp
+
 
 CAssemblerCommand::CAssemblerCommand()
 {
@@ -9219,226 +14242,15 @@ void CAssemblerCommand::applyFileInfo()
 	Global.FileInfo.LineNumber = FileLine;
 }
 
-// file: Commands/CAssemblerLabel.h
-
-class Label;
-
-class CAssemblerLabel: public CAssemblerCommand
-{
-public:
-	CAssemblerLabel(const std::wstring& name, const std::wstring& originalName);
-	CAssemblerLabel(const std::wstring& name, const std::wstring& originalName, Expression& value);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	Expression labelValue;
-	std::shared_ptr<Label> label;
-	bool defined;
-};
-
-class CDirectiveFunction: public CAssemblerCommand
-{
-public:
-	CDirectiveFunction(const std::wstring& name, const std::wstring& originalName);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-	void setContent(std::unique_ptr<CAssemblerCommand> content) { this->content = std::move(content); }
-private:
-	std::unique_ptr<CAssemblerLabel> label;
-	std::unique_ptr<CAssemblerCommand> content;
-	int64_t start, end;
-};
-
-// file: Commands/CAssemblerLabel.cpp
-
-CAssemblerLabel::CAssemblerLabel(const std::wstring& name, const std::wstring& originalName)
-{
-	this->defined = false;
-	this->label = nullptr;
-
-	if (Global.symbolTable.isLocalSymbol(name) == false)
-		updateSection(++Global.Section);
-
-	label = Global.symbolTable.getLabel(name, FileNum, getSection());
-	if (label == nullptr)
-	{
-		Logger::printError(Logger::Error, L"Invalid label name \"%s\"", name);
-		return;
-	}
-
-	label->setOriginalName(originalName);
-
-	// does this need to be in validate?
-	if (label->getUpdateInfo())
-	{
-#ifdef ARMIPS_ARM
-		if (Arch == &Arm && Arm.GetThumbMode())
-			label->setInfo(1);
-		else
-#endif
-			label->setInfo(0);
-	}
-}
-
-CAssemblerLabel::CAssemblerLabel(const std::wstring& name, const std::wstring& originalName, Expression& value)
-	: CAssemblerLabel(name,originalName)
-{
-	labelValue = value;
-}
-
-bool CAssemblerLabel::Validate()
-{
-	bool result = false;
-	if (defined == false)
-	{
-		if (label->isDefined())
-		{
-			Logger::queueError(Logger::Error, L"Label \"%s\" already defined", label->getName());
-			return false;
-		}
-
-		label->setDefined(true);
-		defined = true;
-		result = true;
-	}
-
-	bool hasPhysicalValue = false;
-	int64_t virtualValue = 0;
-	int64_t physicalValue = 0;
-
-	if (labelValue.isLoaded())
-	{
-		// label value is given by expression
-		if (labelValue.evaluateInteger(virtualValue) == false)
-		{
-			Logger::printError(Logger::Error, L"Invalid expression");
-			return result;
-		}
-	} else {
-		// label value is given by current address
-		virtualValue = g_fileManager->getVirtualAddress();
-		physicalValue = g_fileManager->getPhysicalAddress();
-		hasPhysicalValue = true;
-	}
-
-	if (label->getValue() != virtualValue)
-	{
-		label->setValue(virtualValue);
-		result = true;
-	}
-
-	if (hasPhysicalValue && (!label->hasPhysicalValue() || physicalValue != label->getPhysicalValue()))
-	{
-		label->setPhysicalValue(physicalValue);
-		result = true;
-	}
-
-	return result;
-}
-
-void CAssemblerLabel::Encode() const
-{
-
-}
-
-void CAssemblerLabel::writeTempData(TempData& tempData) const
-{
-	if (Global.symbolTable.isGeneratedLabel(label->getName()) == false)
-		tempData.writeLine(label->getValue(),formatString(L"%s:",label->getName()));
-}
-
-void CAssemblerLabel::writeSymData(SymbolData& symData) const
-{
-	// TODO: find a less ugly way to check for undefined memory positions
-	if (label->getValue() == -1 || Global.symbolTable.isGeneratedLabel(label->getName()))
-		return;
-
-	symData.addLabel(label->getValue(),label->getOriginalName());
-}
-
-
-
-
-CDirectiveFunction::CDirectiveFunction(const std::wstring& name, const std::wstring& originalName)
-{
-	this->label = ::make_unique<CAssemblerLabel>(name,originalName);
-	this->content = nullptr;
-	this->start = this->end = 0;
-}
-
-bool CDirectiveFunction::Validate()
-{
-	start = g_fileManager->getVirtualAddress();
-
-	label->applyFileInfo();
-	bool result = label->Validate();
-
-	content->applyFileInfo();
-	if (content->Validate())
-		result = true;
-
-	end = g_fileManager->getVirtualAddress();
-	return result;
-}
-
-void CDirectiveFunction::Encode() const
-{
-	label->Encode();
-	content->Encode();
-}
-
-void CDirectiveFunction::writeTempData(TempData& tempData) const
-{
-	label->writeTempData(tempData);
-	content->applyFileInfo();
-	content->writeTempData(tempData);
-}
-
-void CDirectiveFunction::writeSymData(SymbolData& symData) const
-{
-	symData.startFunction(start);
-	label->writeSymData(symData);
-	content->writeSymData(symData);
-	symData.endFunction(end);
-}
-
-// file: Commands/CDirectiveArea.h
-
-class CDirectiveArea: public CAssemblerCommand
-{
-public:
-	CDirectiveArea(Expression& size);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-	void setFillExpression(Expression& exp);
-	void setContent(std::unique_ptr<CAssemblerCommand> content) { this->content = std::move(content); }
-private:
-	int64_t position;
-	Expression sizeExpression;
-	int64_t areaSize;
-	int64_t contentSize;
-	Expression fillExpression;
-	int8_t fillValue;
-	std::unique_ptr<CAssemblerCommand> content;
-};
-
 // file: Commands/CDirectiveArea.cpp
+
+
 #include <algorithm>
+#include <cstring>
 
-CDirectiveArea::CDirectiveArea(Expression& size)
+CDirectiveArea::CDirectiveArea(bool shared, Expression& size)
+	: shared(shared), sizeExpression(size), content(nullptr)
 {
-	this->areaSize = 0;
-	this->contentSize = 0;
-	this->fillValue = 0;
-
-	this->sizeExpression = size;
-	this->content = nullptr;
 }
 
 void CDirectiveArea::setFillExpression(Expression& exp)
@@ -9446,36 +14258,60 @@ void CDirectiveArea::setFillExpression(Expression& exp)
 	fillExpression = exp;
 }
 
-bool CDirectiveArea::Validate()
+void CDirectiveArea::setPositionExpression(Expression& exp)
+{
+	positionExpression = exp;
+}
+
+bool CDirectiveArea::Validate(const ValidateState &state)
 {
 	int64_t oldAreaSize = areaSize;
 	int64_t oldContentSize = contentSize;
+	int64_t oldPosition = position;
 
-	position = g_fileManager->getVirtualAddress();
-
-	if (sizeExpression.evaluateInteger(areaSize) == false)
+	if (positionExpression.isLoaded())
 	{
-		Logger::queueError(Logger::Error,L"Invalid size expression");
+		if (!positionExpression.evaluateInteger(position))
+		{
+			Logger::queueError(Logger::Error, "Invalid position expression");
+			return false;
+		}
+		Architecture::current().NextSection();
+		g_fileManager->seekVirtual(position);
+	}
+	else
+		position = g_fileManager->getVirtualAddress();
+
+	if (!sizeExpression.evaluateInteger(areaSize))
+	{
+		Logger::queueError(Logger::Error, "Invalid size expression");
 		return false;
 	}
 
 	if (areaSize < 0)
 	{
-		Logger::queueError(Logger::Error, L"Negative area size");
+		Logger::queueError(Logger::Error, "Negative area size");
 		return false;
 	}
 
 	if (fillExpression.isLoaded())
 	{
-		if (fillExpression.evaluateInteger(fillValue) == false)
+		if (!fillExpression.evaluateInteger(fillValue))
 		{
-			Logger::queueError(Logger::Error,L"Invalid fill expression");
+			Logger::queueError(Logger::Error, "Invalid fill expression");
 			return false;
 		}
 	}
 
-	content->applyFileInfo();
-	bool result = content->Validate();
+	bool result = false;
+	if (content)
+	{
+		ValidateState contentValidation = state;
+		contentValidation.noFileChange = true;
+		contentValidation.noFileChangeDirective = "area";
+		content->applyFileInfo();
+		result = content->Validate(contentValidation);
+	}
 	contentSize = g_fileManager->getVirtualAddress()-position;
 
 	// restore info of this command
@@ -9483,28 +14319,47 @@ bool CDirectiveArea::Validate()
 
 	if (areaSize < contentSize)
 	{
-		Logger::queueError(Logger::Error,L"Area at %08x overflowed by %d bytes", position, contentSize - areaSize);
+		Logger::queueError(Logger::Error, "Area at %08x overflowed by %d bytes", position, contentSize - areaSize);
 	}
 
-	if (fillExpression.isLoaded())
+	if (fillExpression.isLoaded() || shared)
 		g_fileManager->advanceMemory(areaSize-contentSize);
 
 	if (areaSize != oldAreaSize || contentSize != oldContentSize)
 		result = true;
+
+	int64_t oldFileID = fileID;
+	fileID = g_fileManager->getOpenFileID();
+
+	if ((oldFileID != fileID || oldPosition != position || areaSize == 0) && oldAreaSize != 0)
+		Allocations::forgetArea(oldFileID, oldPosition, oldAreaSize);
+	if (areaSize != 0)
+		Allocations::setArea(fileID, position, areaSize, contentSize, fillExpression.isLoaded(), shared);
 
 	return result;
 }
 
 void CDirectiveArea::Encode() const
 {
-	content->Encode();
+	if (positionExpression.isLoaded())
+	{
+		Architecture::current().NextSection();
+		g_fileManager->seekVirtual(position);
+	}
+
+	if (content)
+		content->Encode();
 
 	if (fillExpression.isLoaded())
 	{
+		int64_t subAreaUsage = Allocations::getSubAreaUsage(fileID, position);
+		if (subAreaUsage != 0)
+			g_fileManager->advanceMemory(subAreaUsage);
+
 		unsigned char buffer[64];
 		memset(buffer,fillValue,64);
 
-		size_t writeSize = areaSize-contentSize;
+		size_t writeSize = areaSize-contentSize-subAreaUsage;
 		while (writeSize > 0)
 		{
 			size_t part = std::min<size_t>(64,writeSize);
@@ -9512,72 +14367,164 @@ void CDirectiveArea::Encode() const
 			writeSize -= part;
 		}
 	}
+	else if (shared)
+		g_fileManager->advanceMemory(areaSize-contentSize);
 }
 
 void CDirectiveArea::writeTempData(TempData& tempData) const
 {
-	tempData.writeLine(position,formatString(L".area 0x%08X",areaSize));
-	content->applyFileInfo();
-	content->writeTempData(tempData);
-
-	if (fillExpression.isLoaded())
+	const char *directiveType = shared ? "region" : "area";
+	if (positionExpression.isLoaded())
+		tempData.writeLine(position, tfm::format(".org 0x%08llX", position));
+	if (shared && fillExpression.isLoaded())
+		tempData.writeLine(position,tfm::format(".%S 0x%08X,0x%02x",directiveType,areaSize,fillValue));
+	else
+		tempData.writeLine(position,tfm::format(".%S 0x%08X",directiveType,areaSize));
+	if (content)
 	{
-		std::wstring fillString = formatString(L".fill 0x%08X,0x%02X",areaSize-contentSize,fillValue);
-		tempData.writeLine(position+contentSize,fillString);
-		tempData.writeLine(position+areaSize,L".endarea");
+		content->applyFileInfo();
+		content->writeTempData(tempData);
+	}
+
+	if (fillExpression.isLoaded() && !shared)
+	{
+		int64_t subAreaUsage = Allocations::getSubAreaUsage(fileID, position);
+		if (subAreaUsage != 0)
+			tempData.writeLine(position+contentSize, tfm::format(".skip 0x%08llX",subAreaUsage));
+
+		std::string fillString = tfm::format(".fill 0x%08X,0x%02X",areaSize-contentSize-subAreaUsage,fillValue);
+		tempData.writeLine(position+contentSize+subAreaUsage,fillString);
+		tempData.writeLine(position+areaSize,tfm::format(".end%S",directiveType));
 	} else {
-		tempData.writeLine(position+contentSize,L".endarea");
+		tempData.writeLine(position+contentSize,tfm::format(".end%S",directiveType));
 	}
 }
 
 void CDirectiveArea::writeSymData(SymbolData& symData) const
 {
-	content->writeSymData(symData);
+	if (content)
+		content->writeSymData(symData);
 
 	if (fillExpression.isLoaded())
-		symData.addData(position+contentSize,areaSize-contentSize,SymbolData::Data8);
+	{
+		int64_t subAreaUsage = Allocations::getSubAreaUsage(fileID, position);
+		symData.addData(position+contentSize+subAreaUsage,areaSize-contentSize-subAreaUsage,SymbolData::Data8);
+	}
 }
 
-// file: Commands/CDirectiveConditional.h
-
-enum class ConditionType
+CDirectiveAutoRegion::CDirectiveAutoRegion()
 {
-	IF,
-	ELSE,
-	ELSEIF,
-	ENDIF,
-	IFDEF,
-	IFNDEF,
-};
+	this->contentSize = 0;
+	this->resetPosition = 0;
+	this->position = -1;
 
-class CDirectiveConditional: public CAssemblerCommand
+	this->content = nullptr;
+}
+
+void CDirectiveAutoRegion::setMinRangeExpression(Expression& exp)
 {
-public:
-	CDirectiveConditional(ConditionType type);
-	CDirectiveConditional(ConditionType type, const std::wstring& name);
-	CDirectiveConditional(ConditionType type, const Expression& exp);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-	void setContent(std::unique_ptr<CAssemblerCommand> ifBlock, std::unique_ptr<CAssemblerCommand> elseBlock);
-private:
-	bool evaluate();
+	minRangeExpression = exp;
+}
 
-	Expression expression;
-	std::shared_ptr<Label> label;
-	bool previousResult;
+void CDirectiveAutoRegion::setRangeExpressions(Expression& minExp, Expression& maxExp)
+{
+	minRangeExpression = minExp;
+	maxRangeExpression = maxExp;
+}
 
-	ConditionType type;
-	std::unique_ptr<CAssemblerCommand> ifBlock;
-	std::unique_ptr<CAssemblerCommand> elseBlock;
-};
+bool CDirectiveAutoRegion::Validate(const ValidateState &state)
+{
+	resetPosition = g_fileManager->getVirtualAddress();
+
+	ValidateState contentValidation = state;
+	contentValidation.noFileChange = true;
+	contentValidation.noFileChangeDirective = "region";
+
+	// We need at least one full pass run before we can get an address.
+	if (state.passes < 1)
+	{
+		// Just calculate contentSize.
+		position = g_fileManager->getVirtualAddress();
+		content->applyFileInfo();
+		content->Validate(contentValidation);
+		contentSize = g_fileManager->getVirtualAddress() - position;
+
+		g_fileManager->seekVirtual(resetPosition);
+		return true;
+	}
+
+	int64_t oldPosition = position;
+	int64_t oldContentSize = contentSize;
+
+	int64_t minRange = -1;
+	int64_t maxRange = -1;
+	if (minRangeExpression.isLoaded())
+	{
+		if (!minRangeExpression.evaluateInteger(minRange))
+		{
+			Logger::queueError(Logger::Error, "Invalid range expression for .autoregion");
+			return false;
+		}
+	}
+	if (maxRangeExpression.isLoaded())
+	{
+		if (!maxRangeExpression.evaluateInteger(maxRange))
+		{
+			Logger::queueError(Logger::Error, "Invalid range expression for .autoregion");
+			return false;
+		}
+	}
+
+	fileID = g_fileManager->getOpenFileID();
+	if (!Allocations::allocateSubArea(fileID, position, minRange, maxRange, contentSize))
+	{
+		Logger::queueError(Logger::Error, "No space available for .autoregion of size %d", contentSize);
+		// We might be able to do better next time.
+		return Allocations::canTrimSpace();
+	}
+
+	Architecture::current().NextSection();
+	g_fileManager->seekVirtual(position);
+
+	content->applyFileInfo();
+	bool result = content->Validate(contentValidation);
+	contentSize = g_fileManager->getVirtualAddress() - position;
+
+	// restore info of this command
+	applyFileInfo();
+	g_fileManager->seekVirtual(resetPosition);
+
+	if (position != oldPosition || contentSize != oldContentSize)
+		result = true;
+
+	return result;
+}
+
+void CDirectiveAutoRegion::Encode() const
+{
+	Architecture::current().NextSection();
+	g_fileManager->seekVirtual(position);
+	content->Encode();
+	g_fileManager->seekVirtual(resetPosition);
+}
+
+void CDirectiveAutoRegion::writeTempData(TempData& tempData) const
+{
+	tempData.writeLine(position,tfm::format(".autoregion 0x%08X",position));
+	content->applyFileInfo();
+	content->writeTempData(tempData);
+	tempData.writeLine(position+contentSize,".endautoregion");
+}
+
+void CDirectiveAutoRegion::writeSymData(SymbolData& symData) const
+{
+	content->writeSymData(symData);
+}
 
 // file: Commands/CDirectiveConditional.cpp
 
-#ifdef ARMIPS_ARM
+
 extern CArmArchitecture Arm;
-#endif
 
 CDirectiveConditional::CDirectiveConditional(ConditionType type)
 {
@@ -9588,12 +14535,12 @@ CDirectiveConditional::CDirectiveConditional(ConditionType type)
 	previousResult = false;
 }
 
-CDirectiveConditional::CDirectiveConditional(ConditionType type, const std::wstring& name)
+CDirectiveConditional::CDirectiveConditional(ConditionType type, const Identifier& name)
 	: CDirectiveConditional(type)
 {
 	label = Global.symbolTable.getLabel(name,Global.FileInfo.FileNum,Global.Section);
 	if (label == nullptr)
-		Logger::printError(Logger::Error,L"Invalid label name \"%s\"",name);
+		Logger::printError(Logger::Error, "Invalid label name \"%s\"",name);
 }
 
 CDirectiveConditional::CDirectiveConditional(ConditionType type, const Expression& exp)
@@ -9610,12 +14557,12 @@ void CDirectiveConditional::setContent(std::unique_ptr<CAssemblerCommand> ifBloc
 
 bool CDirectiveConditional::evaluate()
 {
-	int64_t value;
+	int64_t value = 0;
 	if (expression.isLoaded())
 	{
-		if (expression.evaluateInteger(value) == false)
+		if (!expression.evaluateInteger(value))
 		{
-			Logger::queueError(Logger::Error,L"Invalid conditional expression");
+			Logger::queueError(Logger::Error, "Invalid conditional expression");
 			return false;
 		}
 	}
@@ -9632,11 +14579,11 @@ bool CDirectiveConditional::evaluate()
 		break;
 	}
 
-	Logger::queueError(Logger::Error,L"Invalid conditional type");
+	Logger::queueError(Logger::Error, "Invalid conditional type");
 	return false;
 }
 
-bool CDirectiveConditional::Validate()
+bool CDirectiveConditional::Validate(const ValidateState &state)
 {
 	bool result = evaluate();
 	bool returnValue = result != previousResult;
@@ -9645,12 +14592,12 @@ bool CDirectiveConditional::Validate()
 	if (result)
 	{
 		ifBlock->applyFileInfo();
-		if (ifBlock->Validate())
+		if (ifBlock->Validate(state))
 			returnValue = true;
 	} else if (elseBlock != nullptr)
 	{
 		elseBlock->applyFileInfo();
-		if (elseBlock->Validate())
+		if (elseBlock->Validate(state))
 			returnValue = true;
 	}
 
@@ -9692,79 +14639,32 @@ void CDirectiveConditional::writeSymData(SymbolData& symData) const
 	}
 }
 
-// file: Commands/CDirectiveData.h
-
-enum class EncodingMode { Invalid, U8, U16, U32, U64, Ascii, Float, Double, Sjis, Custom };
-
-class TableCommand: public CAssemblerCommand
-{
-public:
-	TableCommand(const std::wstring& fileName, TextFile::Encoding encoding);
-	virtual bool Validate();
-	virtual void Encode() const { };
-	virtual void writeTempData(TempData& tempData) const { };
-	virtual void writeSymData(SymbolData& symData) const { };
-private:
-	EncodingTable table;
-};
-
-class CDirectiveData: public CAssemblerCommand
-{
-public:
-	CDirectiveData();
-	~CDirectiveData();
-	void setNormal(std::vector<Expression>& entries, size_t unitSize);
-	void setFloat(std::vector<Expression>& entries);
-	void setDouble(std::vector<Expression>& entries);
-	void setAscii(std::vector<Expression>& entries, bool terminate);
-	void setSjis(std::vector<Expression>& entries, bool terminate);
-	void setCustom(std::vector<Expression>& entries, bool terminate);
-	virtual bool Validate();
-	virtual void Encode() const;
-	virtual void writeTempData(TempData& tempData) const;
-	virtual void writeSymData(SymbolData& symData) const;
-private:
-	void encodeCustom(EncodingTable& table);
-	void encodeSjis();
-	void encodeFloat();
-	void encodeDouble();
-	void encodeNormal();
-	size_t getUnitSize() const;
-	size_t getDataSize() const;
-
-	int64_t position;
-	EncodingMode mode;
-	bool writeTermination;
-	std::vector<Expression> entries;
-	ByteArray customData;
-	std::vector<int64_t> normalData;
-	Endianness endianness;
-};
-
 // file: Commands/CDirectiveData.cpp
+
+#include <cinttypes>
 
 //
 // TableCommand
 //
 
-TableCommand::TableCommand(const std::wstring& fileName, TextFile::Encoding encoding)
+TableCommand::TableCommand(const fs::path& fileName, TextFile::Encoding encoding)
 {
 	auto fullName = getFullPathName(fileName);
 
-	if (fileExists(fullName) == false)
+	if (!fs::exists(fullName))
 	{
-		Logger::printError(Logger::Error,L"Table file \"%s\" does not exist",fileName);
+		Logger::printError(Logger::Error, "Table file \"%s\" does not exist", fileName.u8string());
 		return;
 	}
 
-	if (table.load(fullName,encoding) == false)
+	if (!table.load(fullName,encoding))
 	{
-		Logger::printError(Logger::Error,L"Invalid table file \"%s\"",fileName);
+		Logger::printError(Logger::Error, "Invalid table file \"%s\"",fileName.u8string());
 		return;
 	}
 }
 
-bool TableCommand::Validate()
+bool TableCommand::Validate(const ValidateState &state)
 {
 	Global.Table = table;
 	return false;
@@ -9779,7 +14679,7 @@ CDirectiveData::CDirectiveData()
 {
 	mode = EncodingMode::Invalid;
 	writeTermination = false;
-	endianness = Arch->getEndianness();
+	endianness = Architecture::current().getEndianness();
 }
 
 CDirectiveData::~CDirectiveData()
@@ -9804,7 +14704,7 @@ void CDirectiveData::setNormal(std::vector<Expression>& entries, size_t unitSize
 		this->mode = EncodingMode::U64;
 		break;
 	default:
-		Logger::printError(Logger::Error,L"Invalid data unit size %d",unitSize);
+		Logger::printError(Logger::Error, "Invalid data unit size %d",unitSize);
 		return;
 	}
 
@@ -9902,23 +14802,23 @@ void CDirectiveData::encodeCustom(EncodingTable& table)
 		ExpressionValue value = entries[i].evaluate();
 		if (!value.isValid())
 		{
-			Logger::queueError(Logger::Error,L"Invalid expression");
+			Logger::queueError(Logger::Error, "Invalid expression");
 			continue;
 		}
 
 		if (value.isInt())
 		{
-			customData.appendByte(value.intValue);
+			customData.appendByte((byte)value.intValue);
 		} else if (value.isString())
 		{
-			ByteArray encoded = table.encodeString(value.strValue,false);
+			ByteArray encoded = table.encodeString(value.strValue.string(),false);
 			if (encoded.size() == 0 && value.strValue.size() > 0)
 			{
-				Logger::queueError(Logger::Error,L"Failed to encode \"%s\"",value.strValue);
+				Logger::queueError(Logger::Error, "Failed to encode \"%s\"",value.strValue);
 			}
 			customData.append(encoded);
 		} else {
-			Logger::queueError(Logger::Error,L"Invalid expression type");
+			Logger::queueError(Logger::Error, "Invalid expression type");
 		}
 	}
 
@@ -9932,7 +14832,7 @@ void CDirectiveData::encodeCustom(EncodingTable& table)
 void CDirectiveData::encodeSjis()
 {
 	static EncodingTable sjisTable;
-	if (sjisTable.isLoaded() == false)
+	if (!sjisTable.isLoaded())
 	{
 		unsigned char hexBuffer[2];
 
@@ -9940,21 +14840,19 @@ void CDirectiveData::encodeSjis()
 
 		for (unsigned short SJISValue = 0x0001; SJISValue < 0x0100; SJISValue++)
 		{
-			wchar_t unicodeValue = sjisToUnicode(SJISValue);
-			if (unicodeValue != 0xFFFF)
+			if (auto unicodeValue = sjisToUnicode(SJISValue))
 			{
 				hexBuffer[0] = SJISValue & 0xFF;
-				sjisTable.addEntry(hexBuffer, 1, unicodeValue);
+				sjisTable.addEntry(hexBuffer, 1, convertUnicodeCharToUtf8(*unicodeValue));
 			}
 		}
 		for (unsigned short SJISValue = 0x8100; SJISValue < 0xEF00; SJISValue++)
 		{
-			wchar_t unicodeValue = sjisToUnicode(SJISValue);
-			if (unicodeValue != 0xFFFF)
+			if (auto unicodeValue = sjisToUnicode(SJISValue))
 			{
 				hexBuffer[0] = (SJISValue >> 8) & 0xFF;
 				hexBuffer[1] = SJISValue & 0xFF;
-				sjisTable.addEntry(hexBuffer, 2, unicodeValue);
+				sjisTable.addEntry(hexBuffer, 2, convertUnicodeCharToUtf8(*unicodeValue));
 			}
 		}
 	}
@@ -9970,7 +14868,7 @@ void CDirectiveData::encodeFloat()
 		ExpressionValue value = entries[i].evaluate();
 		if (!value.isValid())
 		{
-			Logger::queueError(Logger::Error,L"Invalid expression");
+			Logger::queueError(Logger::Error, "Invalid expression");
 			continue;
 		}
 
@@ -9991,7 +14889,7 @@ void CDirectiveData::encodeFloat()
 			int64_t num = getDoubleBits((double)value.floatValue);
 			normalData.push_back(num);
 		} else {
-			Logger::queueError(Logger::Error,L"Invalid expression type");
+			Logger::queueError(Logger::Error, "Invalid expression type");
 		}
 	}
 }
@@ -10004,7 +14902,7 @@ void CDirectiveData::encodeNormal()
 		ExpressionValue value = entries[i].evaluate();
 		if (!value.isValid())
 		{
-			Logger::queueError(Logger::Error,L"Invalid expression");
+			Logger::queueError(Logger::Error, "Invalid expression");
 			continue;
 		}
 
@@ -10013,12 +14911,12 @@ void CDirectiveData::encodeNormal()
 			bool hadNonAscii = false;
 			for (size_t l = 0; l < value.strValue.size(); l++)
 			{
-				int64_t num = value.strValue[l];
+				uint64_t num = value.strValue.string()[l];
 				normalData.push_back(num);
 
-				if (num >= 0x80 && hadNonAscii == false)
+				if (num >= 0x80 && !hadNonAscii)
 				{
-					Logger::printError(Logger::Warning,L"Non-ASCII character in data directive. Use .string instead");
+					Logger::queueError(Logger::Error, "Non-ASCII character in data directive. Use .string instead");
 					hadNonAscii = true;
 				}
 			}
@@ -10034,7 +14932,7 @@ void CDirectiveData::encodeNormal()
 			int64_t num = getDoubleBits((double)value.floatValue);
 			normalData.push_back(num);
 		} else {
-			Logger::queueError(Logger::Error,L"Invalid expression type");
+			Logger::queueError(Logger::Error, "Invalid expression type");
 		}
 	}
 
@@ -10044,7 +14942,7 @@ void CDirectiveData::encodeNormal()
 	}
 }
 
-bool CDirectiveData::Validate()
+bool CDirectiveData::Validate(const ValidateState &state)
 {
 	position = g_fileManager->getVirtualAddress();
 
@@ -10069,7 +14967,7 @@ bool CDirectiveData::Validate()
 		encodeCustom(Global.Table);
 		break;
 	default:
-		Logger::queueError(Logger::Error,L"Invalid encoding type");
+		Logger::queueError(Logger::Error, "Invalid encoding type");
 		break;
 	}
 
@@ -10121,61 +15019,62 @@ void CDirectiveData::Encode() const
 void CDirectiveData::writeTempData(TempData& tempData) const
 {
 	size_t size = (getUnitSize()*2+3)*getDataSize()+20;
-	wchar_t* str = new wchar_t[size];
-	wchar_t* start = str;
+	char* str = new char[size];
+	char* start = str;
+	char* end = start + size;
 
 	switch (mode)
 	{
 	case EncodingMode::Sjis:
 	case EncodingMode::Custom:
-		str += swprintf(str,20,L".byte ");
+		str += snprintf(str,end-str,".byte ");
 
 		for (size_t i = 0; i < customData.size(); i++)
 		{
-			str += swprintf(str,20,L"0x%02X,",(uint8_t)customData[i]);
+			str += snprintf(str,end-str,"0x%02X,",(uint8_t)customData[i]);
 		}
 		break;
 	case EncodingMode::U8:
 	case EncodingMode::Ascii:
-		str += swprintf(str,20,L".byte ");
+		str += snprintf(str,end-str,".byte ");
 
 		for (size_t i = 0; i < normalData.size(); i++)
 		{
-			str += swprintf(str,20,L"0x%02X,",(uint8_t)normalData[i]);
+			str += snprintf(str,end-str,"0x%02X,",(uint8_t)normalData[i]);
 		}
 		break;
 	case EncodingMode::U16:
-		str += swprintf(str,20,L".halfword ");
+		str += snprintf(str,end-str,".halfword ");
 
 		for (size_t i = 0; i < normalData.size(); i++)
 		{
-			str += swprintf(str,20,L"0x%04X,",(uint16_t)normalData[i]);
+			str += snprintf(str,end-str,"0x%04X,",(uint16_t)normalData[i]);
 		}
 		break;
 	case EncodingMode::U32:
 	case EncodingMode::Float:
-		str += swprintf(str,20,L".word ");
+		str += snprintf(str,end-str, ".word ");
 
 		for (size_t i = 0; i < normalData.size(); i++)
 		{
-			str += swprintf(str,20,L"0x%08X,",(uint32_t)normalData[i]);
+			str += snprintf(str,end-str,"0x%08X,",(uint32_t)normalData[i]);
 		}
 		break;
 	case EncodingMode::U64:
 	case EncodingMode::Double:
-		str += swprintf(str,20,L".doubleword ");
+		str += snprintf(str,end-str,".doubleword ");
 
 		for (size_t i = 0; i < normalData.size(); i++)
 		{
-			str += swprintf(str,20,L"0x%16llX,",(uint64_t)normalData[i]);
+			str += snprintf(str,end-str,"0x%16" PRIx64 ",",(uint64_t)normalData[i]);
 		}
 		break;
 	case EncodingMode::Invalid:
 		// TODO: Assert?
+		str[0] = '\0';
 		break;
 	}
 
-	*(str-1) = 0;
 	tempData.writeLine(position,start);
 	delete[] start;
 }
@@ -10211,6 +15110,9 @@ void CDirectiveData::writeSymData(SymbolData& symData) const
 
 // file: Commands/CDirectiveFile.cpp
 
+
+#include <cstring>
+
 //
 // CDirectiveFile
 //
@@ -10221,10 +15123,10 @@ CDirectiveFile::CDirectiveFile()
 	file = nullptr;
 }
 
-void CDirectiveFile::initOpen(const std::wstring& fileName, int64_t memory)
+void CDirectiveFile::initOpen(const fs::path& fileName, int64_t memory)
 {
 	type = Type::Open;
-	std::wstring fullName = getFullPathName(fileName);
+	fs::path fullName = getFullPathName(fileName);
 
 	file = std::make_shared<GenericAssemblerFile>(fullName,memory,false);
 	g_fileManager->addFile(file);
@@ -10232,10 +15134,10 @@ void CDirectiveFile::initOpen(const std::wstring& fileName, int64_t memory)
 	updateSection(++Global.Section);
 }
 
-void CDirectiveFile::initCreate(const std::wstring& fileName, int64_t memory)
+void CDirectiveFile::initCreate(const fs::path& fileName, int64_t memory)
 {
 	type = Type::Create;
-	std::wstring fullName = getFullPathName(fileName);
+	fs::path fullName = getFullPathName(fileName);
 
 	file = std::make_shared<GenericAssemblerFile>(fullName,memory,true);
 	g_fileManager->addFile(file);
@@ -10243,11 +15145,11 @@ void CDirectiveFile::initCreate(const std::wstring& fileName, int64_t memory)
 	updateSection(++Global.Section);
 }
 
-void CDirectiveFile::initCopy(const std::wstring& inputName, const std::wstring& outputName, int64_t memory)
+void CDirectiveFile::initCopy(const fs::path& inputName, const fs::path& outputName, int64_t memory)
 {
 	type = Type::Copy;
-	std::wstring fullInputName = getFullPathName(inputName);
-	std::wstring fullOutputName = getFullPathName(outputName);
+	fs::path fullInputName = getFullPathName(inputName);
+	fs::path fullOutputName = getFullPathName(outputName);
 
 	file = std::make_shared<GenericAssemblerFile>(fullOutputName,fullInputName,memory);
 	g_fileManager->addFile(file);
@@ -10261,10 +15163,19 @@ void CDirectiveFile::initClose()
 	updateSection(++Global.Section);
 }
 
-bool CDirectiveFile::Validate()
+bool CDirectiveFile::Validate(const ValidateState &state)
 {
+	if (state.noFileChange)
+	{
+		if (type == Type::Close)
+			Logger::queueError(Logger::Error, "Cannot close file within %S", state.noFileChangeDirective);
+		else
+			Logger::queueError(Logger::Error, "Cannot open new file within %S", state.noFileChangeDirective);
+		return false;
+	}
+
 	virtualAddress = g_fileManager->getVirtualAddress();
-	Arch->NextSection();
+	Architecture::current().NextSection();
 
 	switch (type)
 	{
@@ -10304,22 +15215,22 @@ void CDirectiveFile::Encode() const
 
 void CDirectiveFile::writeTempData(TempData& tempData) const
 {
-	std::wstring str;
+	std::string str;
 
 	switch (type)
 	{
 	case Type::Open:
-		str = formatString(L".open \"%s\",0x%08X",file->getFileName(),file->getOriginalHeaderSize());
+		str = tfm::format(".open \"%s\",0x%08X",file->getFileName().u8string(),file->getOriginalHeaderSize());
 		break;
 	case Type::Create:
-		str = formatString(L".create \"%s\",0x%08X",file->getFileName(),file->getOriginalHeaderSize());
+		str = tfm::format(".create \"%s\",0x%08X",file->getFileName().u8string(),file->getOriginalHeaderSize());
 		break;
 	case Type::Copy:
-		str = formatString(L".open \"%s\",\"%s\",0x%08X",file->getOriginalFileName(),
-			file->getFileName(),file->getOriginalHeaderSize());
+		str = tfm::format(".open \"%s\",\"%s\",0x%08X",file->getOriginalFileName().u8string(),
+			file->getFileName().u8string(),file->getOriginalHeaderSize());
 		break;
 	case Type::Close:
-		str = L".close";
+		str = ".close";
 		break;
 	case Type::Invalid:
 		// TODO: Assert?
@@ -10371,24 +15282,24 @@ void CDirectivePosition::exec() const
 	}
 }
 
-bool CDirectivePosition::Validate()
+bool CDirectivePosition::Validate(const ValidateState &state)
 {
 	virtualAddress = g_fileManager->getVirtualAddress();
 
-	if (expression.evaluateInteger(position) == false)
+	if (!expression.evaluateInteger(position))
 	{
-		Logger::queueError(Logger::FatalError,L"Invalid position");
+		Logger::queueError(Logger::FatalError, "Invalid position");
 		return false;
 	}
 
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	exec();
 	return false;
 }
 
 void CDirectivePosition::Encode() const
 {
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	exec();
 }
 
@@ -10397,10 +15308,10 @@ void CDirectivePosition::writeTempData(TempData& tempData) const
 	switch (type)
 	{
 	case Physical:
-		tempData.writeLine(virtualAddress,formatString(L".orga 0x%08X",position));
+		tempData.writeLine(virtualAddress,tfm::format(".orga 0x%08X",position));
 		break;
 	case Virtual:
-		tempData.writeLine(virtualAddress,formatString(L".org 0x%08X",position));
+		tempData.writeLine(virtualAddress,tfm::format(".org 0x%08X",position));
 		break;
 	}
 }
@@ -10409,34 +15320,35 @@ void CDirectivePosition::writeTempData(TempData& tempData) const
 // CDirectiveIncbin
 //
 
-CDirectiveIncbin::CDirectiveIncbin(const std::wstring& fileName)
+CDirectiveIncbin::CDirectiveIncbin(const fs::path& fileName)
 	: size(0), start(0)
 {
 	this->fileName = getFullPathName(fileName);
 
-	if (fileExists(this->fileName) == false)
+	if (!fs::exists(this->fileName))
 	{
-		Logger::printError(Logger::FatalError,L"File %s not found",this->fileName);
+		Logger::printError(Logger::FatalError, "File %s not found",this->fileName.u8string());
 	}
 
-	this->fileSize = ::fileSize(this->fileName);
+	std::error_code error;
+	this->fileSize = static_cast<int64_t>(fs::file_size(this->fileName, error));
 }
 
-bool CDirectiveIncbin::Validate()
+bool CDirectiveIncbin::Validate(const ValidateState &state)
 {
 	virtualAddress = g_fileManager->getVirtualAddress();
 
 	if (startExpression.isLoaded())
 	{
-		if (startExpression.evaluateInteger(start) == false)
+		if (!startExpression.evaluateInteger(start))
 		{
-			Logger::queueError(Logger::Error,L"Invalid position expression");
+			Logger::queueError(Logger::Error, "Invalid position expression");
 			return false;
 		}
 
 		if (start > fileSize)
 		{
-			Logger::queueError(Logger::Error,L"Start position past end of file");
+			Logger::queueError(Logger::Error, "Start position past end of file");
 			return false;
 		}
 	} else {
@@ -10445,9 +15357,9 @@ bool CDirectiveIncbin::Validate()
 
 	if (sizeExpression.isLoaded())
 	{
-		if (sizeExpression.evaluateInteger(size) == false)
+		if (!sizeExpression.evaluateInteger(size))
 		{
-			Logger::queueError(Logger::Error,L"Invalid size expression");
+			Logger::queueError(Logger::Error, "Invalid size expression");
 			return false;
 		}
 	} else {
@@ -10456,11 +15368,11 @@ bool CDirectiveIncbin::Validate()
 
 	if (start+size > fileSize)
 	{
-		Logger::queueError(Logger::Warning,L"Read size truncated due to file size");
+		Logger::queueError(Logger::Warning, "Read size truncated due to file size");
 		size = fileSize-start;
 	}
 
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	g_fileManager->advanceMemory(size);
 	return false;
 }
@@ -10472,7 +15384,7 @@ void CDirectiveIncbin::Encode() const
 		ByteArray data = ByteArray::fromFile(fileName,(long)start,size);
 		if ((int) data.size() != size)
 		{
-			Logger::printError(Logger::Error,L"Could not read file \"%s\"",fileName);
+			Logger::printError(Logger::Error, "Could not read file \"%s\"",fileName.u8string());
 			return;
 		}
 		g_fileManager->write(data.data(),data.size());
@@ -10481,7 +15393,7 @@ void CDirectiveIncbin::Encode() const
 
 void CDirectiveIncbin::writeTempData(TempData& tempData) const
 {
-	tempData.writeLine(virtualAddress,formatString(L".incbin \"%s\"",fileName));
+	tempData.writeLine(virtualAddress,tfm::format(".incbin \"%s\"",fileName.u8string()));
 }
 
 void CDirectiveIncbin::writeSymData(SymbolData& symData) const
@@ -10514,22 +15426,22 @@ CDirectiveAlignFill::CDirectiveAlignFill(Expression& value, Expression& fillValu
 	fillExpression = fillValue;
 }
 
-bool CDirectiveAlignFill::Validate()
+bool CDirectiveAlignFill::Validate(const ValidateState &state)
 {
 	virtualAddress = g_fileManager->getVirtualAddress();
 
 	if (valueExpression.isLoaded())
 	{
-		if (valueExpression.evaluateInteger(value) == false)
+		if (!valueExpression.evaluateInteger(value))
 		{
-			Logger::queueError(Logger::FatalError,L"Invalid %s",mode == Fill ? L"size" : L"alignment");
+			Logger::queueError(Logger::FatalError, "Invalid %s",mode == Fill ? "size" : "alignment");
 			return false;
 		}
 	}
 
-	if (mode != Fill && isPowerOfTwo(value) == false)
+	if (mode != Fill && !isPowerOfTwo(value))
 	{
-		Logger::queueError(Logger::Error, L"Invalid alignment %d", value);
+		Logger::queueError(Logger::Error, "Invalid alignment %d", value);
 		return false;
 	}
 
@@ -10552,14 +15464,14 @@ bool CDirectiveAlignFill::Validate()
 
 	if (fillExpression.isLoaded())
 	{
-		if (fillExpression.evaluateInteger(fillByte) == false)
+		if (!fillExpression.evaluateInteger(fillByte))
 		{
-			Logger::printError(Logger::FatalError,L"Invalid fill value");
+			Logger::printError(Logger::FatalError, "Invalid fill value");
 			return false;
 		}
 	}
 
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	g_fileManager->advanceMemory(finalSize);
 
 	bool result = oldSize != finalSize;
@@ -10587,13 +15499,13 @@ void CDirectiveAlignFill::writeTempData(TempData& tempData) const
 	switch (mode)
 	{
 	case AlignVirtual:
-		tempData.writeLine(virtualAddress,formatString(L".align 0x%08X",value));
+		tempData.writeLine(virtualAddress,tfm::format(".align 0x%08X",value));
 		break;
 	case AlignPhysical:
-		tempData.writeLine(virtualAddress, formatString(L".aligna 0x%08X", value));
+		tempData.writeLine(virtualAddress, tfm::format(".aligna 0x%08X", value));
 		break;
 	case Fill:
-		tempData.writeLine(virtualAddress,formatString(L".fill 0x%08X,0x%02X",value,fillByte));
+		tempData.writeLine(virtualAddress,tfm::format(".fill 0x%08X,0x%02X",value,fillByte));
 		break;
 	}
 }
@@ -10618,20 +15530,20 @@ void CDirectiveAlignFill::writeSymData(SymbolData& symData) const
 CDirectiveSkip::CDirectiveSkip(Expression& expression)
 	: expression(expression) {}
 
-bool CDirectiveSkip::Validate()
+bool CDirectiveSkip::Validate(const ValidateState &state)
 {
 	virtualAddress = g_fileManager->getVirtualAddress();
 
 	if (expression.isLoaded())
 	{
-		if (expression.evaluateInteger(value) == false)
+		if (!expression.evaluateInteger(value))
 		{
-			Logger::queueError(Logger::FatalError,L"Invalid skip length");
+			Logger::queueError(Logger::FatalError, "Invalid skip length");
 			return false;
 		}
 	}
 
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	g_fileManager->advanceMemory(value);
 
 	return false;
@@ -10639,13 +15551,13 @@ bool CDirectiveSkip::Validate()
 
 void CDirectiveSkip::Encode() const
 {
-	Arch->NextSection();
+	Architecture::current().NextSection();
 	g_fileManager->advanceMemory(value);
 }
 
 void CDirectiveSkip::writeTempData(TempData& tempData) const
 {
-	tempData.writeLine(virtualAddress,formatString(L".skip 0x%08X",value));
+	tempData.writeLine(virtualAddress,tfm::format(".skip 0x%08X",value));
 }
 
 //
@@ -10660,7 +15572,7 @@ void CDirectiveHeaderSize::exec() const
 	std::shared_ptr<AssemblerFile> openFile = g_fileManager->getOpenFile();
 	if (!openFile->hasFixedVirtualAddress())
 	{
-		Logger::printError(Logger::Error,L"Header size not applicable for this file");
+		Logger::printError(Logger::Error, "Header size not applicable for this file");
 		return;
 	}
 	std::shared_ptr<GenericAssemblerFile> file = std::static_pointer_cast<GenericAssemblerFile>(openFile);
@@ -10669,13 +15581,13 @@ void CDirectiveHeaderSize::exec() const
 	file->seekPhysical(physicalAddress);
 }
 
-bool CDirectiveHeaderSize::Validate()
+bool CDirectiveHeaderSize::Validate(const ValidateState &state)
 {
 	virtualAddress = g_fileManager->getVirtualAddress();
 
-	if (expression.evaluateInteger(headerSize) == false)
+	if (!expression.evaluateInteger(headerSize))
 	{
-		Logger::queueError(Logger::FatalError,L"Invalid header size");
+		Logger::queueError(Logger::FatalError, "Invalid header size");
 		return false;
 	}
 
@@ -10690,8 +15602,8 @@ void CDirectiveHeaderSize::Encode() const
 
 void CDirectiveHeaderSize::writeTempData(TempData& tempData) const
 {
-	tempData.writeLine(virtualAddress,formatString(L".headersize %s0x%08X",
-		headerSize < 0 ? L"-" : L"", headerSize < 0 ? -headerSize : headerSize));
+	tempData.writeLine(virtualAddress,tfm::format(".headersize %s0x%08X",
+		headerSize < 0 ? "-" : "", headerSize < 0 ? -headerSize : headerSize));
 }
 
 
@@ -10699,28 +15611,28 @@ void CDirectiveHeaderSize::writeTempData(TempData& tempData) const
 // DirectiveObjImport
 //
 
-DirectiveObjImport::DirectiveObjImport(const std::wstring& inputName)
+DirectiveObjImport::DirectiveObjImport(const fs::path& inputName)
 {
 	ctor = nullptr;
-	if (rel.init(inputName))
-	{
+	success = rel.init(inputName);
+	if (success)
 		rel.exportSymbols();
-	}
 }
 
-DirectiveObjImport::DirectiveObjImport(const std::wstring& inputName, const std::wstring& ctorName)
+DirectiveObjImport::DirectiveObjImport(const fs::path& inputName, const Identifier& ctorName)
 {
-	if (rel.init(inputName))
+	success = rel.init(inputName);
+	if (success)
 	{
 		rel.exportSymbols();
 		ctor = rel.generateCtor(ctorName);
 	}
 }
 
-bool DirectiveObjImport::Validate()
+bool DirectiveObjImport::Validate(const ValidateState &state)
 {
 	bool result = false;
-	if (ctor != nullptr && ctor->Validate())
+	if (ctor != nullptr && ctor->Validate(state))
 		result = true;
 
 	int64_t memory = g_fileManager->getVirtualAddress();
@@ -10753,63 +15665,41 @@ void DirectiveObjImport::writeSymData(SymbolData& symData) const
 	rel.writeSymbols(symData);
 }
 
-// file: Commands/CDirectiveMessage.h
-
-class CDirectiveMessage: public CAssemblerCommand
-{
-public:
-	enum class Type { Warning, Error, Notice };
-	CDirectiveMessage(Type type, Expression exp);
-	virtual bool Validate();
-	virtual void Encode() const {};
-	virtual void writeTempData(TempData& tempData) const { };
-private:
-	Type errorType;
-	Expression exp;
-};
-
-class CDirectiveSym: public CAssemblerCommand
-{
-public:
-	CDirectiveSym(bool enable) {enabled = enable; };
-	virtual bool Validate() { return false; };
-	virtual void Encode() const { };
-	virtual void writeTempData(TempData& tempData) const { };
-	virtual void writeSymData(SymbolData& symData) const { symData.setEnabled(enabled); }
-private:
-	bool enabled;
-};
-
 // file: Commands/CDirectiveMessage.cpp
 
+
 CDirectiveMessage::CDirectiveMessage(Type type, Expression exp)
+	: errorType(type), exp(exp)
 {
-	errorType = type;
-	this->exp = exp;
 }
 
-bool CDirectiveMessage::Validate()
+bool CDirectiveMessage::Validate(const ValidateState &state)
 {
-	std::wstring text;
-	if (exp.evaluateString(text,true) == false)
+	StringLiteral text;
+	if (!exp.evaluateString(text,true))
 	{
-		Logger::queueError(Logger::Error,L"Invalid expression");
+		Logger::queueError(Logger::Error, "Invalid expression");
 		return false;
 	}
 
 	switch (errorType)
 	{
 	case Type::Warning:
-		Logger::queueError(Logger::Warning,text);
+		Logger::queueError(Logger::Warning,text.string());
 		break;
 	case Type::Error:
-		Logger::queueError(Logger::Error,text);
+		Logger::queueError(Logger::Error,text.string());
 		break;
 	case Type::Notice:
-		Logger::queueError(Logger::Notice,text);
+		Logger::queueError(Logger::Notice,text.string());
 		break;
 	}
 	return false;
+}
+
+void CDirectiveSym::writeSymData(SymbolData &symData) const
+{
+	symData.setEnabled(enabled);
 }
 
 // file: Commands/CommandSequence.cpp
@@ -10820,14 +15710,14 @@ CommandSequence::CommandSequence()
 
 }
 
-bool CommandSequence::Validate()
+bool CommandSequence::Validate(const ValidateState &state)
 {
 	bool result = false;
 
 	for (const std::unique_ptr<CAssemblerCommand>& cmd: commands)
 	{
 		cmd->applyFileInfo();
-		if (cmd->Validate())
+		if (cmd->Validate(state))
 			result = true;
 	}
 
@@ -10861,34 +15751,36 @@ void CommandSequence::writeSymData(SymbolData& symData) const
 
 // file: Parser/DirectivesParser.cpp
 
-#include <initializer_list>
+
 #include <algorithm>
+#include <initializer_list>
+#include <optional>
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveOpen(Parser& parser, int flags)
 {
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,2,3) == false)
+	if (!parser.parseExpressionList(list,2,3))
 		return nullptr;
 
 	int64_t memoryAddress;
-	std::wstring inputName, outputName;
+	StringLiteral inputName, outputName;
 
-	if (list[0].evaluateString(inputName,false) == false)
+	if (!list[0].evaluateString(inputName,false))
 		return nullptr;
 
-	if (list.back().evaluateInteger(memoryAddress) == false)
+	if (!list.back().evaluateInteger(memoryAddress))
 		return nullptr;
 
-	auto file = ::make_unique<CDirectiveFile>();
+	auto file = std::make_unique<CDirectiveFile>();
 	if (list.size() == 3)
 	{
-		if (list[1].evaluateString(outputName,false) == false)
+		if (!list[1].evaluateString(outputName,false))
 			return nullptr;
 
-		file->initCopy(inputName,outputName,memoryAddress);
+		file->initCopy(inputName.path(),outputName.path(),memoryAddress);
 		return file;
 	} else {
-		file->initOpen(inputName,memoryAddress);
+		file->initOpen(inputName.path(),memoryAddress);
 		return file;
 	}
 }
@@ -10896,26 +15788,26 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveOpen(Parser& parser, int flags)
 std::unique_ptr<CAssemblerCommand> parseDirectiveCreate(Parser& parser, int flags)
 {
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,2,2) == false)
+	if (!parser.parseExpressionList(list,2,2))
 		return nullptr;
 
 	int64_t memoryAddress;
-	std::wstring inputName, outputName;
+	StringLiteral inputName;
 
-	if (list[0].evaluateString(inputName,false) == false)
+	if (!list[0].evaluateString(inputName,false))
 		return nullptr;
 
-	if (list.back().evaluateInteger(memoryAddress) == false)
+	if (!list.back().evaluateInteger(memoryAddress))
 		return nullptr;
 
-	auto file = ::make_unique<CDirectiveFile>();
-	file->initCreate(inputName,memoryAddress);
+	auto file = std::make_unique<CDirectiveFile>();
+	file->initCreate(inputName.path(),memoryAddress);
 	return file;
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveClose(Parser& parser, int flags)
 {
-	auto file = ::make_unique<CDirectiveFile>();
+	auto file = std::make_unique<CDirectiveFile>();
 	file->initClose();
 	return file;
 }
@@ -10923,14 +15815,14 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveClose(Parser& parser, int flags
 std::unique_ptr<CAssemblerCommand> parseDirectiveIncbin(Parser& parser, int flags)
 {
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,3) == false)
+	if (!parser.parseExpressionList(list,1,3))
 		return nullptr;
 
-	std::wstring fileName;
-	if (list[0].evaluateString(fileName,false) == false)
+	StringLiteral fileName;
+	if (!list[0].evaluateString(fileName,false))
 		return nullptr;
 
-	auto incbin = ::make_unique<CDirectiveIncbin>(fileName);
+	auto incbin = std::make_unique<CDirectiveIncbin>(fileName.path());
 	if (list.size() >= 2)
 		incbin->setStart(list[1]);
 
@@ -10943,7 +15835,7 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveIncbin(Parser& parser, int flag
 std::unique_ptr<CAssemblerCommand> parseDirectivePosition(Parser& parser, int flags)
 {
 	Expression exp = parser.parseExpression();
-	if (exp.isLoaded() == false)
+	if (!exp.isLoaded())
 		return nullptr;
 
 	CDirectivePosition::Type type;
@@ -10959,7 +15851,7 @@ std::unique_ptr<CAssemblerCommand> parseDirectivePosition(Parser& parser, int fl
 		return nullptr;
 	}
 
-	return ::make_unique<CDirectivePosition>(exp,type);
+	return std::make_unique<CDirectivePosition>(exp,type);
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveAlignFill(Parser& parser, int flags)
@@ -10981,62 +15873,62 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveAlignFill(Parser& parser, int f
 	}
 
 	if (mode != CDirectiveAlignFill::Fill && parser.peekToken().type == TokenType::Separator)
-		return ::make_unique<CDirectiveAlignFill>(UINT64_C(4),mode);
+		return std::make_unique<CDirectiveAlignFill>(UINT64_C(4),mode);
 
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,2) == false)
+	if (!parser.parseExpressionList(list,1,2))
 		return nullptr;
 
 	if (list.size() == 2)
-		return ::make_unique<CDirectiveAlignFill>(list[0],list[1],mode);
+		return std::make_unique<CDirectiveAlignFill>(list[0],list[1],mode);
 	else
-		return ::make_unique<CDirectiveAlignFill>(list[0],mode);
+		return std::make_unique<CDirectiveAlignFill>(list[0],mode);
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveSkip(Parser& parser, int flags)
 {
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,1) == false)
+	if (!parser.parseExpressionList(list,1,1))
 		return nullptr;
 
-	return ::make_unique<CDirectiveSkip>(list[0]);
+	return std::make_unique<CDirectiveSkip>(list[0]);
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveHeaderSize(Parser& parser, int flags)
 {
 	Expression exp = parser.parseExpression();
-	if (exp.isLoaded() == false)
+	if (!exp.isLoaded())
 		return nullptr;
 
-	return ::make_unique<CDirectiveHeaderSize>(exp);
+	return std::make_unique<CDirectiveHeaderSize>(exp);
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveObjImport(Parser& parser, int flags)
 {
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,2) == false)
+	if (!parser.parseExpressionList(list,1,2))
 		return nullptr;
 
-	std::wstring fileName;
-	if (list[0].evaluateString(fileName,true) == false)
+	StringLiteral fileName;
+	if (!list[0].evaluateString(fileName,true))
 		return nullptr;
 
 	if (list.size() == 2)
 	{
-		std::wstring ctorName;
-		if (list[1].evaluateIdentifier(ctorName) == false)
+		Identifier ctorName;
+		if (!list[1].evaluateIdentifier(ctorName))
 			return nullptr;
 
-		return ::make_unique<DirectiveObjImport>(fileName,ctorName);
+		return std::make_unique<DirectiveObjImport>(fileName.path(),ctorName);
 	}
 
-	return ::make_unique<DirectiveObjImport>(fileName);
+	return std::make_unique<DirectiveObjImport>(fileName.path());
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveConditional(Parser& parser, int flags)
 {
 	ConditionType type;
-	std::wstring name;
+	Identifier name;
 	Expression exp;
 
 	const Token& start = parser.peekToken();
@@ -11046,10 +15938,10 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveConditional(Parser& parser, int
 	case DIRECTIVE_COND_IF:
 		type = ConditionType::IF;
 		exp = parser.parseExpression();
-		if (exp.isLoaded() == false)
+		if (!exp.isLoaded())
 		{
-			parser.printError(start,L"Invalid condition");
-			return ::make_unique<DummyCommand>();
+			parser.printError(start, "Invalid condition");
+			return std::make_unique<DummyCommand>();
 		}
 
 		if (exp.isConstExpression())
@@ -11061,24 +15953,24 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveConditional(Parser& parser, int
 		break;
 	case DIRECTIVE_COND_IFDEF:
 		type = ConditionType::IFDEF;
-		if (parser.parseIdentifier(name) == false)
+		if (!parser.parseIdentifier(name))
 			return nullptr;
 		break;
 	case DIRECTIVE_COND_IFNDEF:
 		type = ConditionType::IFNDEF;
-		if (parser.parseIdentifier(name) == false)
+		if (!parser.parseIdentifier(name))
 			return nullptr;
 		break;
 	}
 
 	if(parser.nextToken().type != TokenType::Separator)
 	{
-		parser.printError(start,L"Directive not terminated");
+		parser.printError(start, "Directive not terminated");
 		return nullptr;
 	}
 
 	parser.pushConditionalResult(condResult);
-	std::unique_ptr<CAssemblerCommand> ifBlock = parser.parseCommandSequence(L'.', {L".else", L".elseif", L".elseifdef", L".elseifndef", L".endif"});
+	std::unique_ptr<CAssemblerCommand> ifBlock = parser.parseCommandSequence('.', {".else", ".elseif", ".elseifdef", ".elseifndef", ".endif"});
 	parser.popConditionalResult();
 
 	// update the file info so that else commands get the right line number
@@ -11086,7 +15978,14 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveConditional(Parser& parser, int
 
 	std::unique_ptr<CAssemblerCommand> elseBlock = nullptr;
 	const Token &next = parser.nextToken();
-	const std::wstring stringValue = next.getStringValue();
+
+	if (next.type != TokenType::Identifier)
+	{
+		parser.printError(start, "Expected identifier after if block");
+		return nullptr;
+	}
+
+	const Identifier &identifier = next.identifierValue();
 
 	ConditionalResult elseResult;
 	switch (condResult)
@@ -11103,21 +16002,21 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveConditional(Parser& parser, int
 	}
 
 	parser.pushConditionalResult(elseResult);
-	if (stringValue == L".else")
+	if (identifier == ".else")
 	{
-		elseBlock = parser.parseCommandSequence(L'.', {L".endif"});
+		elseBlock = parser.parseCommandSequence('.', {".endif"});
 
 		parser.eatToken();	// eat .endif
-	} else if (stringValue == L".elseif")
+	} else if (identifier == ".elseif")
 	{
 		elseBlock = parseDirectiveConditional(parser,DIRECTIVE_COND_IF);
-	} else if (stringValue == L".elseifdef")
+	} else if (identifier == ".elseifdef")
 	{
 		elseBlock = parseDirectiveConditional(parser,DIRECTIVE_COND_IFDEF);
-	} else if (stringValue == L".elseifndef")
+	} else if (identifier == ".elseifndef")
 	{
 		elseBlock = parseDirectiveConditional(parser,DIRECTIVE_COND_IFNDEF);
-	} else if (stringValue != L".endif")
+	} else if (identifier != ".endif")
 	{
 		parser.popConditionalResult();
 		return nullptr;
@@ -11136,16 +16035,16 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveConditional(Parser& parser, int
 		if (elseBlock != nullptr)
 			return elseBlock;
 		else
-			return ::make_unique<DummyCommand>();
+			return std::make_unique<DummyCommand>();
 	}
 
 	std::unique_ptr<CDirectiveConditional> cond;
 	if (exp.isLoaded())
-		cond = ::make_unique<CDirectiveConditional>(type,exp);
+		cond = std::make_unique<CDirectiveConditional>(type,exp);
 	else if (name.size() != 0)
-		cond = ::make_unique<CDirectiveConditional>(type,name);
+		cond = std::make_unique<CDirectiveConditional>(type, name);
 	else
-		cond = ::make_unique<CDirectiveConditional>(type);
+		cond = std::make_unique<CDirectiveConditional>(type);
 
 	cond->setContent(std::move(ifBlock),std::move(elseBlock));
 	return cond;
@@ -11156,30 +16055,30 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveTable(Parser& parser, int flags
 	const Token& start = parser.peekToken();
 
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,2) == false)
+	if (!parser.parseExpressionList(list,1,2))
 		return nullptr;
 
-	std::wstring fileName;
-	if (list[0].evaluateString(fileName,true) == false)
+	StringLiteral fileName;
+	if (!list[0].evaluateString(fileName,true))
 	{
-		parser.printError(start,L"Invalid file name");
+		parser.printError(start, "Invalid file name");
 		return nullptr;
 	}
 
 	TextFile::Encoding encoding = TextFile::GUESS;
 	if (list.size() == 2)
 	{
-		std::wstring encodingName;
-		if (list[1].evaluateString(encodingName,true) == false)
+		StringLiteral encodingName;
+		if (!list[1].evaluateString(encodingName,true))
 		{
-			parser.printError(start,L"Invalid encoding name");
+			parser.printError(start, "Invalid encoding name");
 			return nullptr;
 		}
 
-		encoding = getEncodingFromString(encodingName);
+		encoding = getEncodingFromString(encodingName.string());
 	}
 
-	return ::make_unique<TableCommand>(fileName,encoding);
+	return std::make_unique<TableCommand>(fileName.path(),encoding);
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveData(Parser& parser, int flags)
@@ -11192,10 +16091,10 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveData(Parser& parser, int flags)
 	}
 
 	std::vector<Expression> list;
-	if (parser.parseExpressionList(list,1,-1) == false)
+	if (!parser.parseExpressionList(list,1,-1))
 		return nullptr;
 
-	auto data = ::make_unique<CDirectiveData>();
+	auto data = std::make_unique<CDirectiveData>();
 	switch (flags & DIRECTIVE_USERMASK)
 	{
 	case DIRECTIVE_DATA_8:
@@ -11209,6 +16108,15 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveData(Parser& parser, int flags)
 		break;
 	case DIRECTIVE_DATA_64:
 		data->setNormal(list,8);
+		break;
+	case DIRECTIVE_DATA_HWORD:
+		data->setNormal(list,Architecture::current().getWordSize()/2);
+		break;
+	case DIRECTIVE_DATA_WORD:
+		data->setNormal(list,Architecture::current().getWordSize());
+		break;
+	case DIRECTIVE_DATA_DWORD:
+		data->setNormal(list,Architecture::current().getWordSize()*2);
 		break;
 	case DIRECTIVE_DATA_ASCII:
 		data->setAscii(list,terminate);
@@ -11232,26 +16140,26 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveData(Parser& parser, int flags)
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveMipsArch(Parser& parser, int flags)
 {
-	Arch = &Mips;
+	Architecture::setCurrent(Mips);
 	Mips.SetLoadDelay(false, 0);
 
 	switch (flags)
 	{
 	case DIRECTIVE_MIPS_PSX:
 		Mips.SetVersion(MARCH_PSX);
-		return ::make_unique<ArchitectureCommand>(L".psx", L"");
+		return std::make_unique<ArchitectureCommand>(".psx", "");
 	case DIRECTIVE_MIPS_PS2:
 		Mips.SetVersion(MARCH_PS2);
-		return ::make_unique<ArchitectureCommand>(L".ps2", L"");
+		return std::make_unique<ArchitectureCommand>(".ps2", "");
 	case DIRECTIVE_MIPS_PSP:
 		Mips.SetVersion(MARCH_PSP);
-		return ::make_unique<ArchitectureCommand>(L".psp", L"");
+		return std::make_unique<ArchitectureCommand>(".psp", "");
 	case DIRECTIVE_MIPS_N64:
 		Mips.SetVersion(MARCH_N64);
-		return ::make_unique<ArchitectureCommand>(L".n64", L"");
+		return std::make_unique<ArchitectureCommand>(".n64", "");
 	case DIRECTIVE_MIPS_RSP:
 		Mips.SetVersion(MARCH_RSP);
-		return ::make_unique<ArchitectureCommand>(L".rsp", L"");
+		return std::make_unique<ArchitectureCommand>(".rsp", "");
 	}
 
 	return nullptr;
@@ -11259,33 +16167,45 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveMipsArch(Parser& parser, int fl
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveArmArch(Parser& parser, int flags)
 {
-#ifdef ARMIPS_ARM
-	Arch = &Arm;
+	Architecture::setCurrent(Arm);
 
 	switch (flags)
 	{
 	case DIRECTIVE_ARM_GBA:
 		Arm.SetThumbMode(true);
 		Arm.setVersion(AARCH_GBA);
-		return ::make_unique<ArchitectureCommand>(L".gba\n.thumb", L".thumb");
+		return std::make_unique<ArchitectureCommand>(".gba\n.thumb", ".thumb");
 	case DIRECTIVE_ARM_NDS:
 		Arm.SetThumbMode(false);
 		Arm.setVersion(AARCH_NDS);
-		return ::make_unique<ArchitectureCommand>(L".nds\n.arm", L".arm");
+		return std::make_unique<ArchitectureCommand>(".nds\n.arm", ".arm");
 	case DIRECTIVE_ARM_3DS:
 		Arm.SetThumbMode(false);
 		Arm.setVersion(AARCH_3DS);
-		return ::make_unique<ArchitectureCommand>(L".3ds\n.arm", L".arm");
+		return std::make_unique<ArchitectureCommand>(".3ds\n.arm", ".arm");
 	case DIRECTIVE_ARM_BIG:
 		Arm.SetThumbMode(false);
 		Arm.setVersion(AARCH_BIG);
-		return ::make_unique<ArchitectureCommand>(L".arm.big\n.arm", L".arm");
+		return std::make_unique<ArchitectureCommand>(".arm.big\n.arm", ".arm");
 	case DIRECTIVE_ARM_LITTLE:
 		Arm.SetThumbMode(false);
 		Arm.setVersion(AARCH_LITTLE);
-		return ::make_unique<ArchitectureCommand>(L".arm.little\n.arm", L".arm");
+		return std::make_unique<ArchitectureCommand>(".arm.little\n.arm", ".arm");
 	}
-#endif
+
+	return nullptr;
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveShArch(Parser& parser, int flags)
+{
+	Architecture::setCurrent(SuperH);
+
+	switch (flags)
+	{
+	case DIRECTIVE_SH_SATURN:
+		SuperH.setVersion(SHARCH_SATURN);
+		return std::make_unique<ArchitectureCommand>(".saturn", "");
+	}
 
 	return nullptr;
 }
@@ -11293,38 +16213,88 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveArmArch(Parser& parser, int fla
 std::unique_ptr<CAssemblerCommand> parseDirectiveArea(Parser& parser, int flags)
 {
 	std::vector<Expression> parameters;
-	if (parser.parseExpressionList(parameters,1,2) == false)
+	if (!parser.parseExpressionList(parameters,1,2))
 		return nullptr;
 
-	auto area = ::make_unique<CDirectiveArea>(parameters[0]);
+	bool shared = (flags & DIRECTIVE_AREA_SHARED) != 0;
+	auto area = std::make_unique<CDirectiveArea>(shared, parameters[0]);
 	if (parameters.size() == 2)
 		area->setFillExpression(parameters[1]);
 
-	std::unique_ptr<CAssemblerCommand> content = parser.parseCommandSequence(L'.', {L".endarea"});
+	std::unique_ptr<CAssemblerCommand> content = parser.parseCommandSequence('.', { ".endarea", ".endregion" });
 	parser.eatToken();
 
 	area->setContent(std::move(content));
 	return area;
 }
 
-std::unique_ptr<CAssemblerCommand> parseDirectiveErrorWarning(Parser& parser, int flags)
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineArea(Parser& parser, int flags)
 {
-	const Token &tok = parser.nextToken();
-
-	if (tok.type != TokenType::Identifier && tok.type != TokenType::String)
+	std::vector<Expression> parameters;
+	if (!parser.parseExpressionList(parameters,2,3))
 		return nullptr;
 
-	std::wstring stringValue = tok.getStringValue();
-	std::transform(stringValue.begin(),stringValue.end(),stringValue.begin(),::towlower);
+	bool shared = (flags & DIRECTIVE_AREA_SHARED) != 0;
+	auto area = std::make_unique<CDirectiveArea>(shared, parameters[1]);
+	area->setPositionExpression(parameters[0]);
+	if (parameters.size() == 3)
+		area->setFillExpression(parameters[2]);
 
-	if (stringValue == L"on")
+	return area;
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveAutoRegion(Parser& parser, int flags)
+{
+	std::vector<Expression> parameters;
+	if (parser.peekToken().type != TokenType::Separator)
+	{
+		if (!parser.parseExpressionList(parameters, 0, 2))
+			return nullptr;
+	}
+
+	auto area = std::make_unique<CDirectiveAutoRegion>();
+	if (parameters.size() == 1)
+		area->setMinRangeExpression(parameters[0]);
+	else if (parameters.size() == 2)
+		area->setRangeExpressions(parameters[0], parameters[1]);
+
+	std::unique_ptr<CAssemblerCommand> content = parser.parseCommandSequence('.', {".endautoregion"});
+	parser.eatToken();
+
+	area->setContent(std::move(content));
+	return area;
+}
+
+std::optional<std::string> getStringOrIdentifier(Parser& parser)
+{
+	const Token &tok = parser.nextToken();
+	if (tok.type == TokenType::Identifier)
+		return tok.identifierValue().string();
+
+	if (tok.type == TokenType::String)
+	{
+		auto stringValue = tok.stringValue().string();
+		std::transform(stringValue.begin(),stringValue.end(),stringValue.begin(),::tolower);
+		return stringValue;
+	}
+
+	return std::nullopt;
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveErrorWarning(Parser& parser, int flags)
+{
+	auto stringValue = getStringOrIdentifier(parser);
+	if (!stringValue)
+		return nullptr;
+
+	if (stringValue == "on")
 	{
 		Logger::setErrorOnWarning(true);
-		return ::make_unique<DummyCommand>();
-	} else if (stringValue == L"off")
+		return std::make_unique<DummyCommand>();
+	} else if (stringValue == "off")
 	{
 		Logger::setErrorOnWarning(false);
-		return ::make_unique<DummyCommand>();
+		return std::make_unique<DummyCommand>();
 	}
 
 	return nullptr;
@@ -11332,22 +16302,18 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveErrorWarning(Parser& parser, in
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveRelativeInclude(Parser& parser, int flags)
 {
-	const Token &tok = parser.nextToken();
-
-	if (tok.type != TokenType::Identifier && tok.type != TokenType::String)
+	auto stringValue = getStringOrIdentifier(parser);
+	if (!stringValue)
 		return nullptr;
 
-	std::wstring stringValue = tok.getStringValue();
-	std::transform(stringValue.begin(),stringValue.end(),stringValue.begin(),::towlower);
-
-	if (stringValue == L"on")
+	if (stringValue == "on")
 	{
 		Global.relativeInclude = true;
-		return ::make_unique<DummyCommand>();
-	} else if (stringValue == L"off")
+		return std::make_unique<DummyCommand>();
+	} else if (stringValue == "off")
 	{
 		Global.relativeInclude = false;
-		return ::make_unique<DummyCommand>();
+		return std::make_unique<DummyCommand>();
 	}
 
 	return nullptr;
@@ -11355,22 +16321,18 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveRelativeInclude(Parser& parser,
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveNocash(Parser& parser, int flags)
 {
-	const Token &tok = parser.nextToken();
-
-	if (tok.type != TokenType::Identifier && tok.type != TokenType::String)
+	auto stringValue = getStringOrIdentifier(parser);
+	if (!stringValue)
 		return nullptr;
 
-	std::wstring stringValue = tok.getStringValue();
-	std::transform(stringValue.begin(),stringValue.end(),stringValue.begin(),::towlower);
-
-	if (stringValue == L"on")
+	if (stringValue == "on")
 	{
 		Global.nocash = true;
-		return ::make_unique<DummyCommand>();
-	} else if (stringValue == L"off")
+		return std::make_unique<DummyCommand>();
+	} else if (stringValue == "off")
 	{
 		Global.nocash = false;
-		return ::make_unique<DummyCommand>();
+		return std::make_unique<DummyCommand>();
 	}
 
 	return nullptr;
@@ -11378,23 +16340,19 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveNocash(Parser& parser, int flag
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveSym(Parser& parser, int flags)
 {
-	const Token &tok = parser.nextToken();
-
-	if (tok.type != TokenType::Identifier && tok.type != TokenType::String)
+	auto stringValue = getStringOrIdentifier(parser);
+	if (!stringValue)
 		return nullptr;
 
-	std::wstring stringValue = tok.getStringValue();
-	std::transform(stringValue.begin(),stringValue.end(),stringValue.begin(),::towlower);
-
-	if (stringValue == L"on")
-		return ::make_unique<CDirectiveSym>(true);
-	else if (stringValue == L"off")
-		return ::make_unique<CDirectiveSym>(false);
+	if (stringValue == "on")
+		return std::make_unique<CDirectiveSym>(true);
+	else if (stringValue == "off")
+		return std::make_unique<CDirectiveSym>(false);
 	else
 		return nullptr;
 }
 
-std::unique_ptr<CAssemblerCommand> parseDirectiveDefineLabel(Parser& parser, int flags)
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineLabel(Parser& parser, int flags, std::optional<bool> thumbMode)
 {
 	const Token& tok = parser.nextToken();
 	if (tok.type != TokenType::Identifier)
@@ -11404,17 +16362,27 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveDefineLabel(Parser& parser, int
 		return nullptr;
 
 	Expression value = parser.parseExpression();
-	if (value.isLoaded() == false)
+	if (!value.isLoaded())
 		return nullptr;
 
-	const std::wstring stringValue = tok.getStringValue();
-	if (Global.symbolTable.isValidSymbolName(stringValue) == false)
+	const Identifier &identifier = tok.identifierValue();
+	if (!Global.symbolTable.isValidSymbolName(identifier))
 	{
-		parser.printError(tok,L"Invalid label name \"%s\"",stringValue);
+		parser.printError(tok, "Invalid label name \"%s\"",identifier);
 		return nullptr;
 	}
 
-	return ::make_unique<CAssemblerLabel>(stringValue,tok.getOriginalText(),value);
+	return std::make_unique<CAssemblerLabel>(identifier,Identifier(tok.getOriginalText()),value,thumbMode);
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineLabel(Parser& parser, int flags)
+{
+	return parseDirectiveDefineLabel(parser, flags, std::nullopt);
+}
+
+std::unique_ptr<CAssemblerCommand> parseDirectiveDefineDataLabel(Parser& parser, int flags)
+{
+	return parseDirectiveDefineLabel(parser, flags, false);
 }
 
 std::unique_ptr<CAssemblerCommand> parseDirectiveFunction(Parser& parser, int flags)
@@ -11425,22 +16393,25 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveFunction(Parser& parser, int fl
 
 	if (parser.nextToken().type != TokenType::Separator)
 	{
-		parser.printError(tok,L"Directive not terminated");
+		parser.printError(tok, "Directive not terminated");
 		return nullptr;
 	}
 
-	auto func = ::make_unique<CDirectiveFunction>(tok.getStringValue(),tok.getOriginalText());
-	std::unique_ptr<CAssemblerCommand> seq = parser.parseCommandSequence(L'.', {L".endfunc",L".endfunction",L".func",L".function"});
+	auto func = std::make_unique<CDirectiveFunction>(Identifier(tok.identifierValue()), Identifier(tok.getOriginalText()));
+	std::unique_ptr<CAssemblerCommand> seq = parser.parseCommandSequence('.', {".endfunc",".endfunction",".func",".function"});
 
-	const std::wstring stringValue = parser.peekToken().getStringValue();
-	if (stringValue == L".endfunc" ||
-		stringValue == L".endfunction")
+	const Token &next = parser.peekToken();
+	if (next.type == TokenType::Identifier)
 	{
-		parser.eatToken();
-		if(parser.nextToken().type != TokenType::Separator)
+		const Identifier &identifier = next.identifierValue();
+		if (identifier == ".endfunc" || identifier == ".endfunction")
 		{
-			parser.printError(tok,L"Directive not terminated");
-			return nullptr;
+			parser.eatToken();
+			if(parser.nextToken().type != TokenType::Separator)
+			{
+				parser.printError(tok, "Directive not terminated");
+				return nullptr;
+			}
 		}
 	}
 
@@ -11455,11 +16426,11 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveMessage(Parser& parser, int fla
 	switch (flags)
 	{
 	case DIRECTIVE_MSG_WARNING:
-		return ::make_unique<CDirectiveMessage>(CDirectiveMessage::Type::Warning,exp);
+		return std::make_unique<CDirectiveMessage>(CDirectiveMessage::Type::Warning,exp);
 	case DIRECTIVE_MSG_ERROR:
-		return ::make_unique<CDirectiveMessage>(CDirectiveMessage::Type::Error,exp);
+		return std::make_unique<CDirectiveMessage>(CDirectiveMessage::Type::Error,exp);
 	case DIRECTIVE_MSG_NOTICE:
-		return ::make_unique<CDirectiveMessage>(CDirectiveMessage::Type::Notice,exp);
+		return std::make_unique<CDirectiveMessage>(CDirectiveMessage::Type::Notice,exp);
 	}
 
 	return nullptr;
@@ -11470,40 +16441,39 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveInclude(Parser& parser, int fla
 	const Token& start = parser.peekToken();
 
 	std::vector<Expression> parameters;
-	if (parser.parseExpressionList(parameters,1,2) == false)
+	if (!parser.parseExpressionList(parameters,1,2))
 		return nullptr;
 
-	std::wstring fileName;
-	if (parameters[0].evaluateString(fileName,true) == false)
+	StringLiteral fileNameParameter;
+	if (!parameters[0].evaluateString(fileNameParameter,true))
 		return nullptr;
 
-	fileName = getFullPathName(fileName);
+	auto fileName = getFullPathName(fileNameParameter.path());
 
 	TextFile::Encoding encoding = TextFile::GUESS;
 	if (parameters.size() == 2)
 	{
-		std::wstring encodingName;
-		if (parameters[1].evaluateString(encodingName,true) == false
-			&& parameters[1].evaluateIdentifier(encodingName) == false)
+		StringLiteral encodingName;
+		if (!parameters[1].evaluateString(encodingName,true))
 			return nullptr;
 
-		encoding = getEncodingFromString(encodingName);
+		encoding = getEncodingFromString(encodingName.string());
 	}
 
 	// don't include the file if it's inside a false block
-	if (parser.isInsideTrueBlock() == false)
-		return ::make_unique<DummyCommand>();
+	if (!parser.isInsideTrueBlock())
+		return std::make_unique<DummyCommand>();
 
-	if (fileExists(fileName) == false)
+	if (!fs::exists(fileName))
 	{
-		parser.printError(start,L"Included file \"%s\" does not exist",fileName);
+		parser.printError(start, "Included file \"%s\" does not exist",fileName.u8string());
 		return nullptr;
 	}
 
 	TextFile f;
-	if (f.open(fileName,TextFile::Read,encoding) == false)
+	if (!f.open(fileName,TextFile::Read,encoding))
 	{
-		parser.printError(start,L"Could not open included file \"%s\"",fileName);
+		parser.printError(start, "Could not open included file \"%s\"",fileName.u8string());
 		return nullptr;
 	}
 
@@ -11511,111 +16481,118 @@ std::unique_ptr<CAssemblerCommand> parseDirectiveInclude(Parser& parser, int fla
 }
 
 const DirectiveMap directives = {
-	{ L".open",				{ &parseDirectiveOpen,				DIRECTIVE_NOTINMEMORY } },
-	{ L".openfile",			{ &parseDirectiveOpen,				DIRECTIVE_NOTINMEMORY } },
-	{ L".create",			{ &parseDirectiveCreate,			DIRECTIVE_NOTINMEMORY } },
-	{ L".createfile",		{ &parseDirectiveCreate,			DIRECTIVE_NOTINMEMORY } },
-	{ L".close",			{ &parseDirectiveClose,				DIRECTIVE_NOTINMEMORY } },
-	{ L".closefile",		{ &parseDirectiveClose,				DIRECTIVE_NOTINMEMORY } },
-	{ L".incbin",			{ &parseDirectiveIncbin,			0 } },
-	{ L".import",			{ &parseDirectiveIncbin,			0 } },
-	{ L".org",				{ &parseDirectivePosition,			DIRECTIVE_POS_VIRTUAL } },
-	{ L"org",				{ &parseDirectivePosition,			DIRECTIVE_POS_VIRTUAL } },
-	{ L".orga",				{ &parseDirectivePosition,			DIRECTIVE_POS_PHYSICAL } },
-	{ L"orga",				{ &parseDirectivePosition,			DIRECTIVE_POS_PHYSICAL } },
-	{ L".headersize",		{ &parseDirectiveHeaderSize,		0 } },
-	{ L".align",			{ &parseDirectiveAlignFill,			DIRECTIVE_ALIGN_VIRTUAL } },
-	{ L".aligna",			{ &parseDirectiveAlignFill,			DIRECTIVE_ALIGN_PHYSICAL } },
-	{ L".fill",				{ &parseDirectiveAlignFill,			DIRECTIVE_ALIGN_FILL } },
-	{ L"defs",				{ &parseDirectiveAlignFill,			DIRECTIVE_ALIGN_FILL } },
-	{ L".skip",				{ &parseDirectiveSkip,				0 } },
+	{ ".open",            { &parseDirectiveOpen,            DIRECTIVE_NOTINMEMORY } },
+	{ ".openfile",        { &parseDirectiveOpen,            DIRECTIVE_NOTINMEMORY } },
+	{ ".create",          { &parseDirectiveCreate,          DIRECTIVE_NOTINMEMORY } },
+	{ ".createfile",      { &parseDirectiveCreate,          DIRECTIVE_NOTINMEMORY } },
+	{ ".close",           { &parseDirectiveClose,           DIRECTIVE_NOTINMEMORY } },
+	{ ".closefile",       { &parseDirectiveClose,           DIRECTIVE_NOTINMEMORY } },
+	{ ".incbin",          { &parseDirectiveIncbin,          0 } },
+	{ ".import",          { &parseDirectiveIncbin,          0 } },
+	{ ".org",             { &parseDirectivePosition,        DIRECTIVE_POS_VIRTUAL } },
+	{ "org",              { &parseDirectivePosition,        DIRECTIVE_POS_VIRTUAL } },
+	{ ".orga",            { &parseDirectivePosition,        DIRECTIVE_POS_PHYSICAL } },
+	{ "orga",             { &parseDirectivePosition,        DIRECTIVE_POS_PHYSICAL } },
+	{ ".headersize",      { &parseDirectiveHeaderSize,      0 } },
+	{ ".align",           { &parseDirectiveAlignFill,       DIRECTIVE_ALIGN_VIRTUAL } },
+	{ ".aligna",          { &parseDirectiveAlignFill,       DIRECTIVE_ALIGN_PHYSICAL } },
+	{ ".fill",            { &parseDirectiveAlignFill,       DIRECTIVE_ALIGN_FILL } },
+	{ "defs",             { &parseDirectiveAlignFill,       DIRECTIVE_ALIGN_FILL } },
+	{ ".skip",            { &parseDirectiveSkip,            0 } },
 
-	{ L".if",				{ &parseDirectiveConditional,		DIRECTIVE_COND_IF } },
-	{ L".ifdef",			{ &parseDirectiveConditional,		DIRECTIVE_COND_IFDEF } },
-	{ L".ifndef",			{ &parseDirectiveConditional,		DIRECTIVE_COND_IFNDEF } },
+	{ ".if",              { &parseDirectiveConditional,     DIRECTIVE_COND_IF } },
+	{ ".ifdef",           { &parseDirectiveConditional,     DIRECTIVE_COND_IFDEF } },
+	{ ".ifndef",          { &parseDirectiveConditional,     DIRECTIVE_COND_IFNDEF } },
 
-	{ L".loadtable",		{ &parseDirectiveTable,				0 } },
-	{ L".table",			{ &parseDirectiveTable,				0 } },
-	{ L".byte",				{ &parseDirectiveData,				DIRECTIVE_DATA_8 } },
-	{ L".halfword",			{ &parseDirectiveData,				DIRECTIVE_DATA_16 } },
-	{ L".word",				{ &parseDirectiveData,				DIRECTIVE_DATA_32 } },
-	{ L".doubleword",		{ &parseDirectiveData,				DIRECTIVE_DATA_64 } },
-	{ L".db",				{ &parseDirectiveData,				DIRECTIVE_DATA_8 } },
-	{ L".dh",				{ &parseDirectiveData,				DIRECTIVE_DATA_16|DIRECTIVE_NOCASHOFF } },
-	{ L".dw",				{ &parseDirectiveData,				DIRECTIVE_DATA_32|DIRECTIVE_NOCASHOFF } },
-	{ L".dd",				{ &parseDirectiveData,				DIRECTIVE_DATA_64|DIRECTIVE_NOCASHOFF } },
-	{ L".dw",				{ &parseDirectiveData,				DIRECTIVE_DATA_16|DIRECTIVE_NOCASHON } },
-	{ L".dd",				{ &parseDirectiveData,				DIRECTIVE_DATA_32|DIRECTIVE_NOCASHON } },
-	{ L".dcb",				{ &parseDirectiveData,				DIRECTIVE_DATA_8 } },
-	{ L".dcw",				{ &parseDirectiveData,				DIRECTIVE_DATA_16 } },
-	{ L".dcd",				{ &parseDirectiveData,				DIRECTIVE_DATA_32 } },
-	{ L".dcq",				{ &parseDirectiveData,				DIRECTIVE_DATA_64 } },
-	{ L"db",				{ &parseDirectiveData,				DIRECTIVE_DATA_8 } },
-	{ L"dh",				{ &parseDirectiveData,				DIRECTIVE_DATA_16|DIRECTIVE_NOCASHOFF } },
-	{ L"dw",				{ &parseDirectiveData,				DIRECTIVE_DATA_32|DIRECTIVE_NOCASHOFF } },
-	{ L"dd",				{ &parseDirectiveData,				DIRECTIVE_DATA_64|DIRECTIVE_NOCASHOFF } },
-	{ L"dw",				{ &parseDirectiveData,				DIRECTIVE_DATA_16|DIRECTIVE_NOCASHON } },
-	{ L"dd",				{ &parseDirectiveData,				DIRECTIVE_DATA_32|DIRECTIVE_NOCASHON } },
-	{ L"dcb",				{ &parseDirectiveData,				DIRECTIVE_DATA_8 } },
-	{ L"dcw",				{ &parseDirectiveData,				DIRECTIVE_DATA_16 } },
-	{ L"dcd",				{ &parseDirectiveData,				DIRECTIVE_DATA_32 } },
-	{ L"dcq",				{ &parseDirectiveData,				DIRECTIVE_DATA_64 } },
-	{ L".float",			{ &parseDirectiveData,				DIRECTIVE_DATA_FLOAT } },
-	{ L".double",			{ &parseDirectiveData,				DIRECTIVE_DATA_DOUBLE } },
-	{ L".ascii",			{ &parseDirectiveData,				DIRECTIVE_DATA_ASCII } },
-	{ L".asciiz",			{ &parseDirectiveData,				DIRECTIVE_DATA_ASCII|DIRECTIVE_DATA_TERMINATION } },
-	{ L".string",			{ &parseDirectiveData,				DIRECTIVE_DATA_CUSTOM|DIRECTIVE_DATA_TERMINATION } },
-	{ L".str",				{ &parseDirectiveData,				DIRECTIVE_DATA_CUSTOM|DIRECTIVE_DATA_TERMINATION } },
-	{ L".stringn",			{ &parseDirectiveData,				DIRECTIVE_DATA_CUSTOM } },
-	{ L".strn",				{ &parseDirectiveData,				DIRECTIVE_DATA_CUSTOM } },
-	{ L".sjis",				{ &parseDirectiveData,				DIRECTIVE_DATA_SJIS|DIRECTIVE_DATA_TERMINATION } },
-	{ L".sjisn",			{ &parseDirectiveData,				DIRECTIVE_DATA_SJIS } },
+	{ ".loadtable",       { &parseDirectiveTable,           0 } },
+	{ ".table",           { &parseDirectiveTable,           0 } },
+	{ ".byte",            { &parseDirectiveData,            DIRECTIVE_DATA_8 } },
+	{ ".halfword",        { &parseDirectiveData,            DIRECTIVE_DATA_HWORD } },
+	{ ".hword",           { &parseDirectiveData,            DIRECTIVE_DATA_HWORD } },
+	{ ".word",            { &parseDirectiveData,            DIRECTIVE_DATA_WORD } },
+	{ ".doubleword",      { &parseDirectiveData,            DIRECTIVE_DATA_DWORD } },
+	{ ".dword",           { &parseDirectiveData,            DIRECTIVE_DATA_DWORD } },
+	{ ".db",              { &parseDirectiveData,            DIRECTIVE_DATA_8 } },
+	{ ".dh",              { &parseDirectiveData,            DIRECTIVE_DATA_HWORD|DIRECTIVE_NOCASHOFF } },
+	{ ".dw",              { &parseDirectiveData,            DIRECTIVE_DATA_WORD|DIRECTIVE_NOCASHOFF } },
+	{ ".dd",              { &parseDirectiveData,            DIRECTIVE_DATA_DWORD|DIRECTIVE_NOCASHOFF } },
+	{ ".dw",              { &parseDirectiveData,            DIRECTIVE_DATA_16|DIRECTIVE_NOCASHON } },
+	{ ".dd",              { &parseDirectiveData,            DIRECTIVE_DATA_32|DIRECTIVE_NOCASHON } },
+	{ ".dcb",             { &parseDirectiveData,            DIRECTIVE_DATA_8 } },
+	{ ".dcw",             { &parseDirectiveData,            DIRECTIVE_DATA_HWORD } },
+	{ ".dcd",             { &parseDirectiveData,            DIRECTIVE_DATA_WORD } },
+	{ ".dcq",             { &parseDirectiveData,            DIRECTIVE_DATA_DWORD } },
+	{ "db",               { &parseDirectiveData,            DIRECTIVE_DATA_8 } },
+	{ "dh",               { &parseDirectiveData,            DIRECTIVE_DATA_HWORD|DIRECTIVE_NOCASHOFF } },
+	{ "dw",               { &parseDirectiveData,            DIRECTIVE_DATA_WORD|DIRECTIVE_NOCASHOFF } },
+	{ "dd",               { &parseDirectiveData,            DIRECTIVE_DATA_DWORD|DIRECTIVE_NOCASHOFF } },
+	{ "dw",               { &parseDirectiveData,            DIRECTIVE_DATA_16|DIRECTIVE_NOCASHON } },
+	{ "dd",               { &parseDirectiveData,            DIRECTIVE_DATA_32|DIRECTIVE_NOCASHON } },
+	{ "dcb",              { &parseDirectiveData,            DIRECTIVE_DATA_8 } },
+	{ "dcw",              { &parseDirectiveData,            DIRECTIVE_DATA_HWORD } },
+	{ "dcd",              { &parseDirectiveData,            DIRECTIVE_DATA_WORD } },
+	{ "dcq",              { &parseDirectiveData,            DIRECTIVE_DATA_DWORD } },
+	{ ".d8",              { &parseDirectiveData,            DIRECTIVE_DATA_8 } },
+	{ ".d16",             { &parseDirectiveData,            DIRECTIVE_DATA_16 } },
+	{ ".d32",             { &parseDirectiveData,            DIRECTIVE_DATA_32 } },
+	{ ".d64",             { &parseDirectiveData,            DIRECTIVE_DATA_64 } },
+	{ ".float",           { &parseDirectiveData,            DIRECTIVE_DATA_FLOAT } },
+	{ ".double",          { &parseDirectiveData,            DIRECTIVE_DATA_DOUBLE } },
+	{ ".ascii",           { &parseDirectiveData,            DIRECTIVE_DATA_ASCII } },
+	{ ".asciiz",          { &parseDirectiveData,            DIRECTIVE_DATA_ASCII|DIRECTIVE_DATA_TERMINATION } },
+	{ ".string",          { &parseDirectiveData,            DIRECTIVE_DATA_CUSTOM|DIRECTIVE_DATA_TERMINATION } },
+	{ ".str",             { &parseDirectiveData,            DIRECTIVE_DATA_CUSTOM|DIRECTIVE_DATA_TERMINATION } },
+	{ ".stringn",         { &parseDirectiveData,            DIRECTIVE_DATA_CUSTOM } },
+	{ ".strn",            { &parseDirectiveData,            DIRECTIVE_DATA_CUSTOM } },
+	{ ".sjis",            { &parseDirectiveData,            DIRECTIVE_DATA_SJIS|DIRECTIVE_DATA_TERMINATION } },
+	{ ".sjisn",           { &parseDirectiveData,            DIRECTIVE_DATA_SJIS } },
 
-	{ L".psx",				{ &parseDirectiveMipsArch,			DIRECTIVE_MIPS_PSX } },
-	{ L".ps2",				{ &parseDirectiveMipsArch,			DIRECTIVE_MIPS_PS2 } },
-	{ L".psp",				{ &parseDirectiveMipsArch,			DIRECTIVE_MIPS_PSP } },
-	{ L".n64",				{ &parseDirectiveMipsArch,			DIRECTIVE_MIPS_N64 } },
-	{ L".rsp",				{ &parseDirectiveMipsArch,			DIRECTIVE_MIPS_RSP } },
+	{ ".psx",             { &parseDirectiveMipsArch,        DIRECTIVE_MIPS_PSX } },
+	{ ".ps2",             { &parseDirectiveMipsArch,        DIRECTIVE_MIPS_PS2 } },
+	{ ".psp",             { &parseDirectiveMipsArch,        DIRECTIVE_MIPS_PSP } },
+	{ ".n64",             { &parseDirectiveMipsArch,        DIRECTIVE_MIPS_N64 } },
+	{ ".rsp",             { &parseDirectiveMipsArch,        DIRECTIVE_MIPS_RSP } },
 
-	{ L".gba",				{ &parseDirectiveArmArch,			DIRECTIVE_ARM_GBA } },
-	{ L".nds",				{ &parseDirectiveArmArch,			DIRECTIVE_ARM_NDS } },
-	{ L".3ds",				{ &parseDirectiveArmArch,			DIRECTIVE_ARM_3DS } },
-	{ L".arm.big",			{ &parseDirectiveArmArch,			DIRECTIVE_ARM_BIG } },
-	{ L".arm.little",		{ &parseDirectiveArmArch,			DIRECTIVE_ARM_LITTLE } },
+	{ ".gba",             { &parseDirectiveArmArch,         DIRECTIVE_ARM_GBA } },
+	{ ".nds",             { &parseDirectiveArmArch,         DIRECTIVE_ARM_NDS } },
+	{ ".3ds",             { &parseDirectiveArmArch,         DIRECTIVE_ARM_3DS } },
+	{ ".arm.big",         { &parseDirectiveArmArch,         DIRECTIVE_ARM_BIG } },
+	{ ".arm.little",      { &parseDirectiveArmArch,         DIRECTIVE_ARM_LITTLE } },
 
-	{ L".area",				{ &parseDirectiveArea,				0 } },
+	{ ".saturn",          { &parseDirectiveShArch,          DIRECTIVE_SH_SATURN } },
+	{ ".32x",             { &parseDirectiveShArch,          DIRECTIVE_SH_SATURN } },
 
-	{ L".importobj",		{ &parseDirectiveObjImport,			0 } },
-	{ L".importlib",		{ &parseDirectiveObjImport,			0 } },
+	{ ".area",            { &parseDirectiveArea,            0 } },
+	{ ".autoregion",      { &parseDirectiveAutoRegion,      0 } },
+	{ ".region",          { &parseDirectiveArea,            DIRECTIVE_AREA_SHARED } },
+	{ ".defineregion",    { &parseDirectiveDefineArea,      DIRECTIVE_AREA_SHARED } },
 
-	{ L".erroronwarning",	{ &parseDirectiveErrorWarning,		0 } },
-	{ L".relativeinclude",	{ &parseDirectiveRelativeInclude,	0 } },
-	{ L".nocash",			{ &parseDirectiveNocash,			0 } },
-	{ L".sym",				{ &parseDirectiveSym,				0 } },
+	{ ".importobj",       { &parseDirectiveObjImport,       0 } },
+	{ ".importlib",       { &parseDirectiveObjImport,       0 } },
 
-	{ L".definelabel",		{ &parseDirectiveDefineLabel,		0 } },
-	{ L".function",			{ &parseDirectiveFunction,			DIRECTIVE_MANUALSEPARATOR } },
-	{ L".func",				{ &parseDirectiveFunction,			DIRECTIVE_MANUALSEPARATOR } },
+	{ ".erroronwarning",  { &parseDirectiveErrorWarning,    0 } },
+	{ ".relativeinclude", { &parseDirectiveRelativeInclude, 0 } },
+	{ ".nocash",          { &parseDirectiveNocash,          0 } },
+	{ ".sym",             { &parseDirectiveSym,             0 } },
 
-	{ L".warning",			{ &parseDirectiveMessage,			DIRECTIVE_MSG_WARNING } },
-	{ L".error",			{ &parseDirectiveMessage,			DIRECTIVE_MSG_ERROR } },
-	{ L".notice",			{ &parseDirectiveMessage,			DIRECTIVE_MSG_NOTICE } },
+	{ ".definelabel",     { &parseDirectiveDefineLabel,     0 } },
+	{ ".definedatalabel", { &parseDirectiveDefineDataLabel, 0 } },
+	{ ".function",        { &parseDirectiveFunction,        DIRECTIVE_MANUALSEPARATOR } },
+	{ ".func",            { &parseDirectiveFunction,        DIRECTIVE_MANUALSEPARATOR } },
 
-	{ L".include",			{ &parseDirectiveInclude,			0 } },
+	{ ".warning",         { &parseDirectiveMessage,         DIRECTIVE_MSG_WARNING } },
+	{ ".error",           { &parseDirectiveMessage,         DIRECTIVE_MSG_ERROR } },
+	{ ".notice",          { &parseDirectiveMessage,         DIRECTIVE_MSG_NOTICE } },
+
+	{ ".include",         { &parseDirectiveInclude,         0 } },
+
 };
 
 // file: Parser/ExpressionParser.cpp
 
-static ExpressionInternal* expression(Tokenizer& tokenizer);
+static std::unique_ptr<ExpressionInternal> expression(Tokenizer& tokenizer);
 
-static bool allowFunctionCall = true;
-
-void allowFunctionCallExpression(bool allow)
-{
-	allowFunctionCall = allow;
-}
-
-static ExpressionInternal* primaryExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> primaryExpression(Tokenizer& tokenizer)
 {
 	const Token &tok = tokenizer.peekToken();
 
@@ -11623,32 +16600,29 @@ static ExpressionInternal* primaryExpression(Tokenizer& tokenizer)
 	{
 	case TokenType::Float:
 		tokenizer.eatToken();
-		return new ExpressionInternal(tok.floatValue);
+		return std::make_unique<ExpressionInternal>(tok.floatValue());
 	case TokenType::Identifier:
 		{
-			const std::wstring stringValue = tok.getStringValue();
+			const Identifier &identifier = tok.identifierValue();
 			tokenizer.eatToken();
-			if (stringValue == L".")
-				return new ExpressionInternal(OperatorType::MemoryPos);
+			if (identifier == ".")
+				return std::make_unique<ExpressionInternal>(OperatorType::MemoryPos);
 			else
-				return new ExpressionInternal(stringValue,OperatorType::Identifier);
+				return std::make_unique<ExpressionInternal>(identifier);
 		}
 	case TokenType::String:
 		tokenizer.eatToken();
-		return new ExpressionInternal(tok.getStringValue(),OperatorType::String);
+		return std::make_unique<ExpressionInternal>(tok.stringValue());
 	case TokenType::Integer:
 		tokenizer.eatToken();
-		return new ExpressionInternal(tok.intValue);
+		return std::make_unique<ExpressionInternal>(tok.intValue());
 	case TokenType::LParen:
 		{
 			tokenizer.eatToken();
-			ExpressionInternal* exp = expression(tokenizer);
+			std::unique_ptr<ExpressionInternal> exp = expression(tokenizer);
 
 			if (tokenizer.nextToken().type != TokenType::RParen)
-			{
-				delete exp;
 				return nullptr;
-			}
 
 			return exp;
 		}
@@ -11660,47 +16634,39 @@ static ExpressionInternal* primaryExpression(Tokenizer& tokenizer)
 	return nullptr;
 }
 
-static ExpressionInternal* postfixExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> postfixExpression(Tokenizer& tokenizer)
 {
-	if (allowFunctionCall &&
-		tokenizer.peekToken(0).type == TokenType::Identifier &&
-		tokenizer.peekToken(1).type == TokenType::LParen)
+	if (tokenizer.peekToken(0).type == TokenType::Identifier &&
+		tokenizer.peekToken(1).type == TokenType::LParen &&
+		ExpressionFunctionHandler::instance().find(tokenizer.peekToken(0).identifierValue()))
 	{
-		const std::wstring functionName = tokenizer.nextToken().getStringValue();
+		const Identifier &functionName = tokenizer.nextToken().identifierValue();
 		tokenizer.eatToken();
 
-		std::vector<ExpressionInternal*> parameters;
+		std::vector<std::unique_ptr<ExpressionInternal>> parameters;
 		while (tokenizer.peekToken().type != TokenType::RParen)
 		{
 			if (parameters.size() != 0 && tokenizer.nextToken().type != TokenType::Comma)
-			{
-				for (ExpressionInternal* exp: parameters)
-					delete exp;
 				return nullptr;
-			}
 
-			ExpressionInternal* exp = expression(tokenizer);
+			std::unique_ptr<ExpressionInternal> exp = expression(tokenizer);
 			if (exp == nullptr)
-			{
-				for (ExpressionInternal* exp: parameters)
-					delete exp;
 				return nullptr;
-			}
 
-			parameters.push_back(exp);
+			parameters.push_back(std::move(exp));
 		}
 
 		tokenizer.eatToken();
 
-		return new ExpressionInternal(functionName,parameters);
+		return std::make_unique<ExpressionInternal>(functionName, std::move(parameters));
 	}
 
 	return primaryExpression(tokenizer);
 }
 
-static ExpressionInternal* unaryExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> unaryExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = postfixExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = postfixExpression(tokenizer);
 	if (exp != nullptr)
 		return exp;
 
@@ -11714,22 +16680,21 @@ static ExpressionInternal* unaryExpression(Tokenizer& tokenizer)
 	case TokenType::Plus:
 		return exp;
 	case TokenType::Minus:
-		return new ExpressionInternal(OperatorType::Neg,exp);
+		return std::make_unique<ExpressionInternal>(OperatorType::Neg, std::move(exp));
 	case TokenType::Tilde:
-		return new ExpressionInternal(OperatorType::BitNot,exp);
+		return std::make_unique<ExpressionInternal>(OperatorType::BitNot, std::move(exp));
 	case TokenType::Exclamation:
-		return new ExpressionInternal(OperatorType::LogNot,exp);
+		return std::make_unique<ExpressionInternal>(OperatorType::LogNot, std::move(exp));
 	case TokenType::Degree:
-		return new ExpressionInternal(OperatorType::ToString,exp);
+		return std::make_unique<ExpressionInternal>(OperatorType::ToString, std::move(exp));
 	default:
-		delete exp;
 		return nullptr;
 	}
 }
 
-static ExpressionInternal* multiplicativeExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> multiplicativeExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = unaryExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = unaryExpression(tokenizer);
 	if (exp ==  nullptr)
 		return nullptr;
 
@@ -11756,22 +16721,19 @@ static ExpressionInternal* multiplicativeExpression(Tokenizer& tokenizer)
 
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = unaryExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = unaryExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(op,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(op, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* additiveExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> additiveExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = multiplicativeExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = multiplicativeExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11795,22 +16757,19 @@ static ExpressionInternal* additiveExpression(Tokenizer& tokenizer)
 
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = multiplicativeExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = multiplicativeExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(op,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(op, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* shiftExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> shiftExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = additiveExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = additiveExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11834,22 +16793,19 @@ static ExpressionInternal* shiftExpression(Tokenizer& tokenizer)
 
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = additiveExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = additiveExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(op,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(op, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* relationalExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> relationalExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = shiftExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = shiftExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11879,22 +16835,18 @@ static ExpressionInternal* relationalExpression(Tokenizer& tokenizer)
 
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = shiftExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = shiftExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
-
-		exp = new ExpressionInternal(op,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(op, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* equalityExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> equalityExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = relationalExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = relationalExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11918,22 +16870,19 @@ static ExpressionInternal* equalityExpression(Tokenizer& tokenizer)
 
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = relationalExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = relationalExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(op,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(op, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* andExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> andExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = equalityExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = equalityExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11941,22 +16890,19 @@ static ExpressionInternal* andExpression(Tokenizer& tokenizer)
 	{
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = equalityExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = equalityExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(OperatorType::BitAnd,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(OperatorType::BitAnd, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* exclusiveOrExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> exclusiveOrExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = andExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = andExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11964,22 +16910,19 @@ static ExpressionInternal* exclusiveOrExpression(Tokenizer& tokenizer)
 	{
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = andExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = andExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(OperatorType::Xor,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(OperatorType::Xor, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* inclusiveOrExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> inclusiveOrExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = exclusiveOrExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = exclusiveOrExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -11987,22 +16930,19 @@ static ExpressionInternal* inclusiveOrExpression(Tokenizer& tokenizer)
 	{
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = exclusiveOrExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = exclusiveOrExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(OperatorType::BitOr,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(OperatorType::BitOr, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* logicalAndExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> logicalAndExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = inclusiveOrExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = inclusiveOrExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -12010,22 +16950,19 @@ static ExpressionInternal* logicalAndExpression(Tokenizer& tokenizer)
 	{
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = inclusiveOrExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = inclusiveOrExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(OperatorType::LogAnd,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(OperatorType::LogAnd, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* logicalOrExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> logicalOrExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = logicalAndExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = logicalAndExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -12033,22 +16970,19 @@ static ExpressionInternal* logicalOrExpression(Tokenizer& tokenizer)
 	{
 		tokenizer.eatToken();
 
-		ExpressionInternal* exp2 = logicalAndExpression(tokenizer);
+		std::unique_ptr<ExpressionInternal> exp2 = logicalAndExpression(tokenizer);
 		if (exp2 == nullptr)
-		{
-			delete exp;
 			return nullptr;
-		}
 
-		exp = new ExpressionInternal(OperatorType::LogOr,exp,exp2);
+		exp = std::make_unique<ExpressionInternal>(OperatorType::LogOr, std::move(exp), std::move(exp2));
 	}
 
 	return exp;
 }
 
-static ExpressionInternal* conditionalExpression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> conditionalExpression(Tokenizer& tokenizer)
 {
-	ExpressionInternal* exp = logicalOrExpression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = logicalOrExpression(tokenizer);
 	if (exp == nullptr)
 		return nullptr;
 
@@ -12057,23 +16991,19 @@ static ExpressionInternal* conditionalExpression(Tokenizer& tokenizer)
 		return exp;
 
 	tokenizer.eatToken();
-	ExpressionInternal* second = expression(tokenizer);
+	std::unique_ptr<ExpressionInternal> second = expression(tokenizer);
 
 	if (second != nullptr && tokenizer.nextToken().type == TokenType::Colon)
 	{
-		ExpressionInternal* third = expression(tokenizer);
+		std::unique_ptr<ExpressionInternal> third = expression(tokenizer);
 		if (third != nullptr)
-			return new ExpressionInternal(OperatorType::TertiaryIf,exp,second,third);
-
-		delete third;
+			return std::make_unique<ExpressionInternal>(OperatorType::TertiaryIf, std::move(exp), std::move(second), std::move(third));
 	}
 
-	delete second;
-	delete exp;
 	return nullptr;
 }
 
-static ExpressionInternal* expression(Tokenizer& tokenizer)
+static std::unique_ptr<ExpressionInternal> expression(Tokenizer& tokenizer)
 {
 	return conditionalExpression(tokenizer);
 }
@@ -12084,20 +17014,19 @@ Expression parseExpression(Tokenizer& tokenizer, bool inUnknownOrFalseBlock)
 
 	// parse expression, revert tokenizer to previous position
 	// if it failed
-	ExpressionInternal* exp = expression(tokenizer);
+	std::unique_ptr<ExpressionInternal> exp = expression(tokenizer);
 	if (exp == nullptr)
 		tokenizer.setPosition(pos);
 
-	Expression result;
-	result.setExpression(exp, inUnknownOrFalseBlock);
-	return result;
+	return Expression(std::move(exp), inUnknownOrFalseBlock);
 }
 
 // file: Parser/Parser.cpp
 
-inline bool isPartOfList(const std::wstring& value, const std::initializer_list<const wchar_t*>& terminators)
+
+inline bool isPartOfList(const Identifier& value, const std::initializer_list<const char*>& terminators)
 {
-	for (const wchar_t* term: terminators)
+	for (const char* term: terminators)
 	{
 		if (value == term)
 			return true;
@@ -12122,6 +17051,14 @@ void Parser::pushConditionalResult(ConditionalResult cond)
 	conditionStack.push_back(info);
 }
 
+void Parser::printError(const Token &token, const std::string &text)
+{
+	errorLine = token.line;
+	Global.FileInfo.LineNumber = (int) token.line;
+	Logger::printError(Logger::Error, text);
+	error = true;
+}
+
 Expression Parser::parseExpression()
 {
 	return ::parseExpression(*getTokenizer(), !isInsideTrueBlock() || isInsideUnknownBlock());
@@ -12138,9 +17075,9 @@ bool Parser::parseExpressionList(std::vector<Expression>& list, int min, int max
 	Expression exp = parseExpression();
 	list.push_back(exp);
 
-	if (exp.isLoaded() == false)
+	if (!exp.isLoaded())
 	{
-		printError(start,L"Parameter failure");
+		printError(start, "Parameter failure");
 		getTokenizer()->skipLookahead();
 		valid = false;
 	}
@@ -12152,9 +17089,9 @@ bool Parser::parseExpressionList(std::vector<Expression>& list, int min, int max
 		exp = parseExpression();
 		list.push_back(exp);
 
-		if (exp.isLoaded() == false)
+		if (!exp.isLoaded())
 		{
-			printError(start,L"Parameter failure");
+			printError(start, "Parameter failure");
 			getTokenizer()->skipLookahead();
 			valid = false;
 		}
@@ -12162,35 +17099,35 @@ bool Parser::parseExpressionList(std::vector<Expression>& list, int min, int max
 
 	if (list.size() < (size_t) min)
 	{
-		printError(start,L"Not enough parameters (min %d)",min);
+		printError(start, "Not enough parameters (min %d)",min);
 		return false;
 	}
 
 	if (max != -1 && (size_t) max < list.size())
 	{
-		printError(start,L"Too many parameters (max %d)",max);
+		printError(start, "Too many parameters (max %d)",max);
 		return false;
 	}
 
 	return valid;
 }
 
-bool Parser::parseIdentifier(std::wstring& dest)
+bool Parser::parseIdentifier(Identifier& dest)
 {
 	const Token& tok = nextToken();
 	if (tok.type != TokenType::Identifier)
 		return false;
 
-	dest = tok.getStringValue();
+	dest = tok.identifierValue();
 	return true;
 }
 
-std::unique_ptr<CAssemblerCommand> Parser::parseCommandSequence(wchar_t indicator, const std::initializer_list<const wchar_t*> terminators)
+std::unique_ptr<CAssemblerCommand> Parser::parseCommandSequence(char indicator, const std::initializer_list<const char*> terminators)
 {
-	auto sequence = ::make_unique<CommandSequence>();
+	auto sequence = std::make_unique<CommandSequence>();
 
 	bool foundTermination = false;
-	while (atEnd() == false)
+	while (!atEnd())
 	{
 		const Token &next = peekToken();
 
@@ -12200,14 +17137,18 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommandSequence(wchar_t indicato
 			continue;
 		}
 
-		if (next.stringValueStartsWith(indicator) && isPartOfList(next.getStringValue(), terminators))
+		if (next.type == TokenType::Identifier)
 		{
-			foundTermination = true;
-			break;
+			const auto &identifier = next.identifierValue();
+			if (identifier.startsWith(indicator) && isPartOfList(identifier, terminators))
+			{
+				foundTermination = true;
+				break;
+			}
 		}
 
 		bool foundSomething = false;
-		while (checkEquLabel() || checkMacroDefinition())
+		while (checkEquLabel() || checkMacroDefinition() || checkExpFuncDefinition())
 		{
 			// do nothing, just parse all the equs and macros there are
 			if (hasError())
@@ -12222,7 +17163,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommandSequence(wchar_t indicato
 		std::unique_ptr<CAssemblerCommand> cmd = parseCommand();
 
 		// omit commands inside blocks that are trivially false
-		if (isInsideTrueBlock() == false)
+		if (!isInsideTrueBlock())
 		{
 			continue;
 		}
@@ -12232,15 +17173,15 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommandSequence(wchar_t indicato
 
 	if (!foundTermination && terminators.size())
 	{
-		std::wstring expected;
-		for (const wchar_t* terminator : terminators)
+		std::string expected;
+		for (const char* terminator : terminators)
 		{
 			if (!expected.empty())
-				expected += L", ";
+				expected += ", ";
 			expected += terminator;
 		}
 
-		Logger::printError(Logger::Error, L"Unterminated command sequence, expected any of %s.", expected);
+		Logger::printError(Logger::Error, "Unterminated command sequence, expected any of %s.", expected);
 	}
 
 	return sequence;
@@ -12249,27 +17190,27 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommandSequence(wchar_t indicato
 std::unique_ptr<CAssemblerCommand> Parser::parseFile(TextFile& file, bool virtualFile)
 {
 	FileTokenizer tokenizer;
-	if (tokenizer.init(&file) == false)
+	if (!tokenizer.init(&file))
 		return nullptr;
 
 	std::unique_ptr<CAssemblerCommand> result = parse(&tokenizer,virtualFile,file.getFileName());
 
-	if (file.isFromMemory() == false)
+	if (!file.isFromMemory())
 		Global.FileInfo.TotalLineCount += file.getNumLines();
 
 	return result;
 }
 
-std::unique_ptr<CAssemblerCommand> Parser::parseString(const std::wstring& text)
+std::unique_ptr<CAssemblerCommand> Parser::parseString(const std::string& text)
 {
 	TextFile file;
 	file.openMemory(text);
 	return parseFile(file,true);
 }
 
-std::unique_ptr<CAssemblerCommand> Parser::parseTemplate(const std::wstring& text, std::initializer_list<AssemblyTemplateArgument> variables)
+std::unique_ptr<CAssemblerCommand> Parser::parseTemplate(const std::string& text, std::initializer_list<AssemblyTemplateArgument> variables)
 {
-	std::wstring fullText = text;
+	std::string fullText = text;
 
 	overrideFileInfo = true;
 	overrideFileNum = Global.FileInfo.FileNum;
@@ -12281,7 +17222,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseTemplate(const std::wstring& tex
 		(void)count;
 #ifdef _DEBUG
 		if (count != 0 && arg.value.empty())
-			Logger::printError(Logger::Warning,L"Empty replacement for %s",arg.variableName);
+			Logger::printError(Logger::Warning, "Empty replacement for %s",arg.variableName);
 #endif
 	}
 
@@ -12297,7 +17238,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseDirective(const DirectiveMap &di
 	if (tok.type != TokenType::Identifier)
 		return nullptr;
 
-	const std::wstring stringValue = tok.getStringValue();
+	const std::string &stringValue = tok.identifierValue().string();
 
 	auto matchRange = directiveSet.equal_range(stringValue);
 	for (auto it = matchRange.first; it != matchRange.second; ++it)
@@ -12306,26 +17247,26 @@ std::unique_ptr<CAssemblerCommand> Parser::parseDirective(const DirectiveMap &di
 
 		if (directive.flags & DIRECTIVE_DISABLED)
 			continue;
-		if ((directive.flags & DIRECTIVE_NOCASHOFF) && Global.nocash == true)
+		if ((directive.flags & DIRECTIVE_NOCASHOFF) && Global.nocash)
 			continue;
-		if ((directive.flags & DIRECTIVE_NOCASHON) && Global.nocash == false)
+		if ((directive.flags & DIRECTIVE_NOCASHON) && !Global.nocash)
 			continue;
-		if ((directive.flags & DIRECTIVE_NOTINMEMORY) && Global.memoryMode == true)
+		if ((directive.flags & DIRECTIVE_NOTINMEMORY) && Global.memoryMode)
 			continue;
 
 		if (directive.flags & DIRECTIVE_MIPSRESETDELAY)
-			Arch->NextSection();
+			Architecture::current().NextSection();
 
 		eatToken();
 		std::unique_ptr<CAssemblerCommand> result = directive.function(*this,directive.flags);
 		if (result == nullptr)
 		{
-			if (hasError() == false)
-				printError(tok,L"Directive parameter failure");
+			if (!hasError())
+				printError(tok, "Directive parameter failure");
 			return nullptr;
 		} else if (!(directive.flags & DIRECTIVE_MANUALSEPARATOR) && nextToken().type != TokenType::Separator)
 		{
-			printError(tok,L"Directive not terminated");
+			printError(tok, "Directive not terminated");
 			return nullptr;
 		}
 
@@ -12348,11 +17289,11 @@ bool Parser::matchToken(TokenType type, bool optional)
 	return nextToken().type == type;
 }
 
-std::unique_ptr<CAssemblerCommand> Parser::parse(Tokenizer* tokenizer, bool virtualFile, const std::wstring& name)
+std::unique_ptr<CAssemblerCommand> Parser::parse(Tokenizer* tokenizer, bool virtualFile, const fs::path& name)
 {
 	if (entries.size() >= 150)
 	{
-		Logger::queueError(Logger::Error, L"Max include/recursion depth reached");
+		Logger::queueError(Logger::Error, "Max include/recursion depth reached");
 		return nullptr;
 	}
 
@@ -12360,10 +17301,10 @@ std::unique_ptr<CAssemblerCommand> Parser::parse(Tokenizer* tokenizer, bool virt
 	entry.tokenizer = tokenizer;
 	entry.virtualFile = virtualFile;
 
-	if (virtualFile == false && name.empty() == false)
+	if (!virtualFile && !name.empty())
 	{
-		entry.fileNum = (int) Global.FileInfo.FileList.size();
-		Global.FileInfo.FileList.push_back(name);
+		entry.fileNum = (int) Global.fileList.size();
+		Global.fileList.add(name);
 	} else {
 		entry.fileNum = -1;
 	}
@@ -12376,7 +17317,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parse(Tokenizer* tokenizer, bool virt
 	return sequence;
 }
 
-void Parser::addEquation(const Token& startToken, const std::wstring& name, const std::wstring& value)
+void Parser::addEquation(const Token& startToken, const Identifier& name, const std::string& value)
 {
 	// parse value string
 	TextFile f;
@@ -12386,18 +17327,18 @@ void Parser::addEquation(const Token& startToken, const std::wstring& name, cons
 	tok.init(&f);
 
 	TokenizerPosition start = tok.getPosition();
-	while (tok.atEnd() == false && tok.peekToken().type != TokenType::Separator)
+	while (!tok.atEnd() && tok.peekToken().type != TokenType::Separator)
 	{
 		const Token& token = tok.nextToken();
-		if (token.type == TokenType::Identifier && token.getStringValue() == name)
+		if (token.type == TokenType::Identifier && token.identifierValue() == name)
 		{
-			printError(startToken,L"Recursive equ definition for \"%s\" not allowed",name);
+			printError(startToken, "Recursive equ definition for \"%s\" not allowed",name);
 			return;
 		}
 
 		if (token.type == TokenType::Equ)
 		{
-			printError(startToken,L"equ value must not contain another equ instance");
+			printError(startToken, "equ value must not contain another equ instance");
 			return;
 		}
 	}
@@ -12428,47 +17369,143 @@ bool Parser::checkEquLabel()
 		if (peekToken(pos).type == TokenType::Equ &&
 			peekToken(pos+1).type == TokenType::EquValue)
 		{
-			std::wstring name = peekToken(0).getStringValue();
-			std::wstring value = peekToken(pos+1).getStringValue();
+			const Identifier &name = peekToken(0).identifierValue();
+			const StringLiteral &value = peekToken(pos+1).stringValue();
 			eatTokens(pos+2);
 
 			// skip the equ if it's inside a false conditional block
-			if (isInsideTrueBlock() == false)
+			if (!isInsideTrueBlock())
 				return true;
 
 			// equs can't be inside blocks whose condition can only be
 			// evaluated during validation
 			if (isInsideUnknownBlock())
 			{
-				printError(start,L"equ not allowed inside of block with non-trivial condition");
+				printError(start, "equ not allowed inside of block with non-trivial condition");
 				return true;
 			}
 
-			// equs are not allowed in macros
+			// when parsing a macro, just remember the equ name
 			if (initializingMacro)
 			{
-				printError(start,L"equ not allowed in macro");
+				macroLabels.insert(name);
 				return true;
 			}
 
-			if (Global.symbolTable.isValidSymbolName(name) == false)
+			if (!Global.symbolTable.isValidSymbolName(name))
 			{
-				printError(start,L"Invalid equation name \"%s\"",name);
+				printError(start, "Invalid equation name \"%s\"",name);
 				return true;
 			}
 
 			if (Global.symbolTable.symbolExists(name,Global.FileInfo.FileNum,Global.Section))
 			{
-				printError(start,L"Equation name \"%s\" already defined",name);
+				printError(start, "Equation name \"%s\" already defined",name);
 				return true;
 			}
 
-			addEquation(start,name,value);
+			addEquation(start,name,value.string());
 			return true;
 		}
 	}
 
 	return false;
+}
+
+bool Parser::parseFunctionDeclaration(Identifier& name, std::vector<Identifier> &parameters)
+{
+	const Token& first = peekToken();
+	if (first.type != TokenType::Identifier)
+		return false;
+
+	name = nextToken().identifierValue();
+
+	if (nextToken().type != TokenType::LParen)
+		return false;
+
+	parameters.clear();
+	while (!atEnd() && peekToken().type != TokenType::RParen)
+	{
+		if (!parameters.empty() && peekToken().type == TokenType::Comma)
+			eatToken();
+
+		const Token& token = nextToken();
+		if (token.type != TokenType::Identifier)
+			return false;
+
+		parameters.emplace_back(token.identifierValue());
+	}
+
+	return !atEnd() && nextToken().type == TokenType::RParen;
+}
+
+bool Parser::checkExpFuncDefinition()
+{
+	const Token& first = peekToken();
+	if (first.type != TokenType::Identifier)
+		return false;
+
+	const auto &identifier = first.identifierValue();
+	if (!identifier.startsWith('.') || first.identifierValue() != ".expfunc")
+		return false;
+
+	eatToken();
+
+	Identifier functionName;
+	std::vector<Identifier> functionParameters;
+
+	// load declarationn
+	if (!parseFunctionDeclaration(functionName, functionParameters))
+	{
+		printError(first, "Invalid expression function declaration");
+		return false;
+	}
+
+	if (nextToken().type != TokenType::Comma)
+	{
+		printError(first, "Invalid expression function declaration");
+		return false;
+	}
+
+	// load definition
+	TokenizerPosition start = getTokenizer()->getPosition();
+
+	while (!atEnd() && peekToken().type != TokenType::Separator)
+		eatToken();
+
+	TokenizerPosition end = getTokenizer()->getPosition();
+	auto functionContent = getTokenizer()->getTokens(start,end);
+
+	// checks
+
+	// Expression functions have to be defined at parse time, so they can't be defined in blocks
+	// with non-trivial conditions
+	if (isInsideUnknownBlock())
+	{
+		printError(first, "Expression function definition not allowed inside of block with non-trivial condition");
+		return false;
+	}
+
+	// if we are in a known false block, don't define the function
+	if (!isInsideTrueBlock())
+		return true;
+
+	if(nextToken().type != TokenType::Separator)
+	{
+		printError(first, ".expfunc directive not terminated");
+		return false;
+	}
+
+	// duplicate check
+	if (ExpressionFunctionHandler::instance().find(functionName))
+	{
+		printError(first, "Expression function \"%s\" already declared", functionName);
+		return false;
+	}
+
+	// register function
+	ExpressionFunctionHandler::instance().addUserFunction(functionName, functionParameters, functionContent);
+	return true;
 }
 
 bool Parser::checkMacroDefinition()
@@ -12477,7 +17514,8 @@ bool Parser::checkMacroDefinition()
 	if (first.type != TokenType::Identifier)
 		return false;
 
-	if (!first.stringValueStartsWith(L'.') || first.getStringValue() != L".macro")
+	const auto &identifier = first.identifierValue();
+	if (!identifier.startsWith('.') || first.identifierValue() != ".macro")
 		return false;
 
 	eatToken();
@@ -12485,11 +17523,11 @@ bool Parser::checkMacroDefinition()
 	// nested macro definitions are not allowed
 	if (initializingMacro)
 	{
-		printError(first,L"Nested macro definitions not allowed");
+		printError(first, "Nested macro definitions not allowed");
 		while (!atEnd())
 		{
 			const Token& token = nextToken();
-			if (token.type == TokenType::Identifier && token.getStringValue() == L".endmacro")
+			if (token.type == TokenType::Identifier && token.identifierValue() == ".endmacro")
 				break;
 		}
 
@@ -12497,21 +17535,21 @@ bool Parser::checkMacroDefinition()
 	}
 
 	std::vector<Expression> parameters;
-	if (parseExpressionList(parameters,1,-1) == false)
+	if (!parseExpressionList(parameters,1,-1))
 		return false;
 
 	ParserMacro macro;
 	macro.counter = 0;
 
 	// load name
-	if (parameters[0].evaluateIdentifier(macro.name) == false)
+	if (!parameters[0].evaluateIdentifier(macro.name))
 		return false;
 
 	// load parameters
 	for (size_t i = 1; i < parameters.size(); i++)
 	{
-		std::wstring name;
-		if (parameters[i].evaluateIdentifier(name) == false)
+		Identifier name;
+		if (!parameters[i].evaluateIdentifier(name))
 			return false;
 
 		macro.parameters.push_back(name);
@@ -12519,7 +17557,7 @@ bool Parser::checkMacroDefinition()
 
 	if(nextToken().type != TokenType::Separator)
 	{
-		printError(first,L"Macro directive not terminated");
+		printError(first, "Macro directive not terminated");
 		return false;
 	}
 
@@ -12527,10 +17565,10 @@ bool Parser::checkMacroDefinition()
 
 	TokenizerPosition start = getTokenizer()->getPosition();
 	bool valid = false;
-	while (atEnd() == false)
+	while (!atEnd())
 	{
 		const Token& tok = nextToken();
-		if (tok.type == TokenType::Identifier && tok.getStringValue() == L".endmacro")
+		if (tok.type == TokenType::Identifier && tok.identifierValue() == ".endmacro")
 		{
 			valid = true;
 			break;
@@ -12541,7 +17579,7 @@ bool Parser::checkMacroDefinition()
 	// with non-trivial conditions
 	if (isInsideUnknownBlock())
 	{
-		printError(first, L"Macro definition not allowed inside of block with non-trivial condition");
+		printError(first, "Macro definition not allowed inside of block with non-trivial condition");
 		return false;
 	}
 
@@ -12552,14 +17590,14 @@ bool Parser::checkMacroDefinition()
 	// duplicate check
 	if (macros.find(macro.name) != macros.end())
 	{
-		printError(first, L"Macro \"%s\" already defined", macro.name);
+		printError(first, "Macro \"%s\" already defined", macro.name);
 		return false;
 	}
 
 	// no .endmacro, not valid
-	if (valid == false)
+	if (!valid)
 	{
-		printError(first, L"Macro \"%s\" not terminated", macro.name);
+		printError(first, "Macro \"%s\" not terminated", macro.name);
 		return true;
 	}
 
@@ -12569,12 +17607,74 @@ bool Parser::checkMacroDefinition()
 
 	if(nextToken().type != TokenType::Separator)
 	{
-		printError(first,L"Endmacro directive not terminated");
+		printError(first, "Endmacro directive not terminated");
 		return false;
 	}
 
 	macros[macro.name] = macro;
 	return true;
+}
+
+std::optional<std::vector<Token>> Parser::extractMacroParameter(const Token &macroStart)
+{
+	TokenizerPosition startPos = getTokenizer()->getPosition();
+
+	// Find the end of the parameter. The parameter may contain expressions with function calls,
+	// so keep track of the current parenthesis depth level
+	int parenCount = 0;
+	int braceCount = 0;
+	int bracketCount = 0;
+
+	while (peekToken().type != TokenType::Separator)
+	{
+		// if the next token is a comma, only exit the loop if parentheses are balanced
+		auto type = peekToken().type;
+		if (type == TokenType::Comma && parenCount == 0 && braceCount == 0 && bracketCount == 0)
+			break;
+
+		// keep track of parenthesis depth
+		switch (type)
+		{
+		case TokenType::LParen:
+			++parenCount;
+			break;
+		case TokenType::RParen:
+			--parenCount;
+			break;
+		case TokenType::LBrace:
+			++braceCount;
+			break;
+		case TokenType::RBrace:
+			--braceCount;
+			break;
+		case TokenType::LBrack:
+			++bracketCount;
+			break;
+		case TokenType::RBrack:
+			--bracketCount;
+			break;
+		default:
+			break;
+		}
+
+		eatToken();
+	}
+
+	if (parenCount != 0)
+	{
+		printError(macroStart, "Unbalanced parentheses in macro parameter");
+		return std::nullopt;
+	}
+
+	TokenizerPosition endPos = getTokenizer()->getPosition();
+	std::vector<Token> tokens = getTokenizer()->getTokens(startPos,endPos);
+	if (tokens.size() == 0)
+	{
+		printError(macroStart, "Empty macro argument");
+		return std::nullopt;
+	}
+
+	return tokens;
 }
 
 std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
@@ -12583,7 +17683,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
 	if (start.type != TokenType::Identifier)
 		return nullptr;
 
-	auto it = macros.find(start.getStringValue());
+	auto it = macros.find(start.identifierValue());
 	if (it == macros.end())
 		return nullptr;
 
@@ -12594,12 +17694,12 @@ std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
 	// registering replacements for parameter values
 	TokenStreamTokenizer macroTokenizer;
 
-	std::set<std::wstring> identifierParameters;
+	std::set<Identifier> identifierParameters;
 	for (size_t i = 0; i < macro.parameters.size(); i++)
 	{
 		if (peekToken().type == TokenType::Separator)
 		{
-			printError(start,L"Too few macro arguments (%d vs %d)",i,macro.parameters.size());
+			printError(start, "Too few macro arguments (%d vs %d)",i,macro.parameters.size());
 			return nullptr;
 		}
 
@@ -12607,28 +17707,21 @@ std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
 		{
 			if (nextToken().type != TokenType::Comma)
 			{
-				printError(start,L"Macro arguments not comma-separated");
+				printError(start, "Macro arguments not comma-separated");
 				return nullptr;
 			}
 		}
 
-		TokenizerPosition startPos = getTokenizer()->getPosition();
-		Expression exp = parseExpression();
-		if (exp.isLoaded() == false)
-		{
-			printError(start,L"Invalid macro argument expression");
+		auto tokens = extractMacroParameter(start);
+		if (!tokens)
 			return nullptr;
-		}
-
-		TokenizerPosition endPos = getTokenizer()->getPosition();
-		std::vector<Token> tokens = getTokenizer()->getTokens(startPos,endPos);
 
 		// remember any single identifier parameters for the label replacement
-		if (tokens.size() == 1 && tokens[0].type == TokenType::Identifier)
-			identifierParameters.insert(tokens[0].getStringValue());
+		if (tokens->size() == 1 && tokens->front().type == TokenType::Identifier)
+			identifierParameters.insert(tokens->front().identifierValue());
 
 		// give them as a replacement to new tokenizer
-		macroTokenizer.registerReplacement(macro.parameters[i],tokens);
+		macroTokenizer.registerReplacement(macro.parameters[i], *tokens);
 	}
 
 	if (peekToken().type == TokenType::Comma)
@@ -12636,30 +17729,33 @@ std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
 		size_t count = macro.parameters.size();
 		while (peekToken().type == TokenType::Comma)
 		{
+			// skip comma
 			eatToken();
-			parseExpression();
-			count++;
+
+			// skip parameter value
+			extractMacroParameter(start);
+			++count;
 		}
 
-		printError(start,L"Too many macro arguments (%d vs %d)",count,macro.parameters.size());
+		printError(start, "Too many macro arguments (%d vs %d)",count,macro.parameters.size());
 		return nullptr;
 	}
 
 	if(nextToken().type != TokenType::Separator)
 	{
-		printError(start,L"Macro call not terminated");
+		printError(start, "Macro call not terminated");
 		return nullptr;
 	}
 
 	// skip macro instantiation in known false blocks
 	if (!isInsideUnknownBlock() && !isInsideTrueBlock())
-		return ::make_unique<DummyCommand>();
+		return std::make_unique<DummyCommand>();
 
 	// a macro is fully parsed once when it's loaded
 	// to gather all labels. it's not necessary to
 	// instantiate other macros at that time
 	if (initializingMacro)
-		return ::make_unique<DummyCommand>();
+		return std::make_unique<DummyCommand>();
 
 	// the first time a macro is instantiated, it needs to be analyzed
 	// for labels
@@ -12680,7 +17776,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
 	}
 
 	// register labels and replacements
-	for (const std::wstring& label: macro.labels)
+	for (const Identifier& label: macro.labels)
 	{
 		// check if the label is using the name of a parameter
 		// in that case, don't register a unique replacement
@@ -12688,13 +17784,13 @@ std::unique_ptr<CAssemblerCommand> Parser::parseMacroCall()
 			continue;
 
 		// otherwise make sure the name is unique
-		std::wstring fullName;
-		if (Global.symbolTable.isLocalSymbol(label))
-			fullName = formatString(L"@@%s_%s_%08X",macro.name,label.substr(2),macro.counter);
-		else if (Global.symbolTable.isStaticSymbol(label))
-			fullName = formatString(L"@%s_%s_%08X",macro.name,label.substr(1),macro.counter);
+		std::string fullName;
+		if (Global.symbolTable.isLocalSymbol(Identifier(label)))
+			fullName = tfm::format("@@%s_%s_%08X",macro.name,label.string().substr(2),macro.counter);
+		else if (Global.symbolTable.isStaticSymbol(Identifier(label)))
+			fullName = tfm::format("@%s_%s_%08X",macro.name,label.string().substr(1),macro.counter);
 		else
-			fullName = formatString(L"%s_%s_%08X",macro.name,label,macro.counter);
+			fullName = tfm::format("%s_%s_%08X",macro.name,label,macro.counter);
 
 		macroTokenizer.registerReplacement(label,fullName);
 	}
@@ -12715,19 +17811,19 @@ std::unique_ptr<CAssemblerCommand> Parser::parseLabel()
 	if (peekToken(0).type == TokenType::Identifier &&
 		peekToken(1).type == TokenType::Colon)
 	{
-		const std::wstring name = start.getStringValue();
+		const Identifier &name = start.identifierValue();
 		eatTokens(2);
 
 		if (initializingMacro)
 			macroLabels.insert(name);
 
-		if (Global.symbolTable.isValidSymbolName(name) == false)
+		if (!Global.symbolTable.isValidSymbolName(name))
 		{
-			printError(start,L"Invalid label name \"%s\"",name);
+			printError(start, "Invalid label name \"%s\"",name);
 			return nullptr;
 		}
 
-		return ::make_unique<CAssemblerLabel>(name,start.getOriginalText());
+		return std::make_unique<CAssemblerLabel>(name,Identifier(start.getOriginalText()));
 	}
 
 	return nullptr;
@@ -12739,7 +17835,7 @@ std::unique_ptr<CAssemblerCommand> Parser::handleError()
 	while (!atEnd() && nextToken().type != TokenType::Separator);
 
 	clearError();
-	return ::make_unique<InvalidCommand>();
+	return std::make_unique<InvalidCommand>();
 }
 
 
@@ -12756,7 +17852,7 @@ void Parser::updateFileInfo()
 	{
 		size_t index = i-1;
 
-		if (entries[index].virtualFile == false && entries[index].fileNum != -1)
+		if (!entries[index].virtualFile && entries[index].fileNum != -1)
 		{
 			Global.FileInfo.FileNum = entries[index].fileNum;
 
@@ -12781,7 +17877,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommand()
 	updateFileInfo();
 
 	if (atEnd())
-		return ::make_unique<DummyCommand>();
+		return std::make_unique<DummyCommand>();
 
 	if ((command = parseLabel()) != nullptr)
 		return command;
@@ -12793,7 +17889,7 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommand()
 	if (hasError())
 		return handleError();
 
-	if ((command = Arch->parseDirective(*this)) != nullptr)
+	if ((command = Architecture::current().parseDirective(*this)) != nullptr)
 		return command;
 	if (hasError())
 		return handleError();
@@ -12803,13 +17899,13 @@ std::unique_ptr<CAssemblerCommand> Parser::parseCommand()
 	if (hasError())
 		return handleError();
 
-	if ((command = Arch->parseOpcode(*this)) != nullptr)
+	if ((command = Architecture::current().parseOpcode(*this)) != nullptr)
 		return command;
 	if (hasError())
 		return handleError();
 
 	const Token& token = peekToken();
-	printError(token,L"Parse error '%s'",token.getOriginalText());
+	printError(token,"Parse error '%s'", token.getOriginalText());
 	return handleError();
 }
 
@@ -12840,7 +17936,7 @@ bool TokenSequenceParser::parse(Parser& parser, int& result)
 			// if necessary, check if the value of the token also matches
 			if (type == TokenType::Identifier)
 			{
-				if (values == entry.values.end() || values->textValue != token.getStringValue())
+				if (values == entry.values.end() || values->textValue != token.identifierValue())
 				{
 					valid = false;
 					break;
@@ -12849,7 +17945,7 @@ bool TokenSequenceParser::parse(Parser& parser, int& result)
 				values++;
 			} else if (type == TokenType::Integer)
 			{
-				if (values == entry.values.end() || values->intValue != token.intValue)
+				if (values == entry.values.end() || values->intValue != token.intValue())
 				{
 					valid = false;
 					break;
@@ -12872,6 +17968,8 @@ bool TokenSequenceParser::parse(Parser& parser, int& result)
 }
 
 // file: Parser/Tokenizer.cpp
+
+
 #include <algorithm>
 
 
@@ -12879,13 +17977,41 @@ bool TokenSequenceParser::parse(Parser& parser, int& result)
 // Tokenizer
 //
 
+namespace
+{
+	// Assumes that there is a valid character at index
+	char32_t decodeUtf8Character(const std::string &source, size_t &index)
+	{
+		size_t extraBytes = 0;
+		int value = source[index++];
+
+		if ((value & 0xE0) == 0xC0)
+		{
+			extraBytes = 1;
+			value &= 0x1F;
+		} else if ((value & 0xF0) == 0xE0)
+		{
+			extraBytes = 2;
+			value &= 0x0F;
+		}
+
+		for (size_t i = 0; i < extraBytes; i++)
+		{
+			int b = source[index++];
+			value = (value << 6) | (b & 0x3F);
+		}
+
+		return char32_t(value);
+	}
+}
+
 std::vector<std::vector<Token>> Tokenizer::equValues;
 
 Tokenizer::Tokenizer()
 {
 	position.it = tokens.begin();
 	invalidToken.type = TokenType::Invalid;
-	invalidToken.setOriginalText(L"Unexpected end of token stream");
+	invalidToken.setValue(std::monostate{}, "Unexpected end of token stream");
 }
 
 bool Tokenizer::processElement(TokenList::iterator& it)
@@ -12893,19 +18019,19 @@ bool Tokenizer::processElement(TokenList::iterator& it)
 	if (it == tokens.end())
 		return false;
 
-	while ((*it).checked == false)
+	while (!(*it).checked)
 	{
 		bool replaced = false;
 		if ((*it).type == TokenType::Identifier)
 		{
-			const std::wstring stringValue = (*it).getStringValue();
+			const Identifier &identifier = (*it).identifierValue();
 			for (const Replacement& replacement: replacements)
 			{
 				// if the identifier matches, add all of its tokens
-				if (replacement.identifier == stringValue)
+				if (replacement.identifier == identifier)
 				{
 					TokenList::iterator insertIt = it;
-					insertIt++;
+					++insertIt;
 
 					// replace old token with the new tokens
 					// replace the first token manually so that any iterators
@@ -12915,7 +18041,7 @@ bool Tokenizer::processElement(TokenList::iterator& it)
 
 					// If the value at this position didn't change, then just keep going.
 					// Otherwise we'd be stuck in an endless replace loop
-					if (stringValue != (*it).getStringValue())
+					if ((*it).type != TokenType::Identifier || identifier != (*it).identifierValue())
 						replaced = true;
 					break;
 				}
@@ -12926,7 +18052,7 @@ bool Tokenizer::processElement(TokenList::iterator& it)
 
 			// check for equs
 			size_t index;
-			if (Global.symbolTable.findEquation(stringValue,Global.FileInfo.FileNum,Global.Section,index))
+			if (Global.symbolTable.findEquation(identifier,Global.FileInfo.FileNum,Global.Section,index))
 			{
 				TokenList::iterator nextIt = it;
 				std::advance(nextIt, 1);
@@ -12957,7 +18083,7 @@ bool Tokenizer::processElement(TokenList::iterator& it)
 			}
 		}
 
-		if (replaced == false)
+		if (!replaced)
 			(*it).checked = true;
 	}
 
@@ -12966,7 +18092,7 @@ bool Tokenizer::processElement(TokenList::iterator& it)
 
 const Token& Tokenizer::nextToken()
 {
-	if (processElement(position.it) == false)
+	if (!processElement(position.it))
 		return invalidToken;
 
 	return *position.it++;
@@ -12977,13 +18103,13 @@ const Token& Tokenizer::peekToken(int ahead)
 	auto it = position.it;
 	for (int i = 0; i < ahead; i++)
 	{
-		if (processElement(it) == false)
+		if (!processElement(it))
 			return invalidToken;
 
-		it++;
+		++it;
 	}
 
-	if (processElement(it) == false)
+	if (!processElement(it))
 		return invalidToken;
 
 	return *it;
@@ -12993,9 +18119,9 @@ void Tokenizer::eatTokens(int num)
 {
 	for (int i = 0; i < num; i++)
 	{
-		if (processElement(position.it) == false)
+		if (!processElement(position.it))
 			break;
-		position.it++;
+		++position.it;
 	}
 }
 
@@ -13018,22 +18144,60 @@ std::vector<Token> Tokenizer::getTokens(TokenizerPosition start, TokenizerPositi
 	return result;
 }
 
-void Tokenizer::registerReplacement(const std::wstring& identifier, std::vector<Token>& tokens)
+void Tokenizer::registerReplacement(const Identifier& identifier, std::vector<Token>& tokens)
 {
 	Replacement replacement { identifier, tokens };
 	replacements.push_back(replacement);
 }
 
-void Tokenizer::registerReplacement(const std::wstring& identifier, const std::wstring& newValue)
+void Tokenizer::registerReplacement(const Identifier& identifier, const std::string& newValue)
 {
 	// Ensure the new identifier is lower case as it would be as a normally parsed string
-	std::wstring lowerCase = newValue;
-	std::transform(lowerCase.begin(), lowerCase.end(), lowerCase.begin(), ::towlower);
+	std::string lowerCase = newValue;
+	std::transform(lowerCase.begin(), lowerCase.end(), lowerCase.begin(), ::tolower);
 
 	Token tok;
 	tok.type = TokenType::Identifier;
-	tok.setStringValue(lowerCase);
-	tok.setOriginalText(newValue);
+	tok.setValue(Identifier(lowerCase), newValue);
+
+	Replacement replacement;
+	replacement.identifier = identifier;
+	replacement.value.push_back(tok);
+
+	replacements.push_back(replacement);
+}
+
+void Tokenizer::registerReplacementString(const Identifier& identifier, const StringLiteral& newValue)
+{
+	Token tok;
+	tok.type = TokenType::String;
+	tok.setValue(newValue, newValue.string());
+
+	Replacement replacement;
+	replacement.identifier = identifier;
+	replacement.value.push_back(tok);
+
+	replacements.push_back(replacement);
+}
+
+void Tokenizer::registerReplacementInteger(const Identifier& identifier, int64_t newValue)
+{
+	Token tok;
+	tok.type = TokenType::Integer;
+	tok.setValue(newValue, tfm::format("%d", newValue));
+
+	Replacement replacement;
+	replacement.identifier = identifier;
+	replacement.value.push_back(tok);
+
+	replacements.push_back(replacement);
+}
+
+void Tokenizer::registerReplacementFloat(const Identifier& identifier, double newValue)
+{
+	Token tok;
+	tok.type = TokenType::Float;
+	tok.setValue(newValue, tfm::format("%g", newValue));
 
 	Replacement replacement;
 	replacement.identifier = identifier;
@@ -13068,7 +18232,7 @@ void Tokenizer::resetLookaheadCheckMarks()
 // FileTokenizer
 //
 
-inline bool isWhitespace(const std::wstring& text, size_t pos)
+inline bool isWhitespace(const std::string& text, size_t pos)
 {
 	if (pos >= text.size())
 		return false;
@@ -13076,7 +18240,7 @@ inline bool isWhitespace(const std::wstring& text, size_t pos)
 	return text[pos] == ' ' || text[pos] == '\t';
 }
 
-inline bool isComment(const std::wstring& text, size_t pos)
+inline bool isComment(const std::string& text, size_t pos)
 {
 	if (pos < text.size() && text[pos] == ';')
 		return true;
@@ -13087,7 +18251,7 @@ inline bool isComment(const std::wstring& text, size_t pos)
 	return false;
 }
 
-inline bool isContinuation(const std::wstring& text, size_t pos)
+inline bool isContinuation(const std::string& text, size_t pos)
 {
 	if (pos >= text.size())
 		return false;
@@ -13095,18 +18259,12 @@ inline bool isContinuation(const std::wstring& text, size_t pos)
 	return text[pos] == '\\';
 }
 
-inline bool isBlockComment(const std::wstring& text, size_t pos){
-	if (pos+1 < text.size() && text[pos+0] == '/' && text[pos+1] == '*')
-		return true;
-
-	return false;
+inline bool isBlockComment(const std::string& text, size_t pos){
+	return pos+1 < text.size() && text[pos+0] == '/' && text[pos+1] == '*';
 }
 
-inline bool isBlockCommentEnd(const std::wstring& text, size_t pos){
-	if (pos+1 < text.size() && text[pos+0] == '*' && text[pos+1] == '/')
-		return true;
-
-	return false;
+inline bool isBlockCommentEnd(const std::string& text, size_t pos){
+	return pos+1 < text.size() && text[pos+0] == '*' && text[pos+1] == '/';
 }
 
 void FileTokenizer::skipWhitespace()
@@ -13129,7 +18287,7 @@ void FileTokenizer::skipWhitespace()
 				{
 					if (isInputAtEnd())
 					{
-						createToken(TokenType::Invalid,linePos,L"Unexpected end of file in block comment");
+						createToken(TokenType::Invalid,linePos, "Unexpected end of file in block comment");
 						addToken(token);
 						return;
 					}
@@ -13151,7 +18309,7 @@ void FileTokenizer::createToken(TokenType type, size_t length)
 	token.type = type;
 	token.line = lineNumber;
 	token.column = linePos+1;
-	token.setOriginalText(currentLine,linePos,length);
+	token.setValue(std::monostate{}, currentLine.substr(linePos, length));
 
 	linePos += length;
 }
@@ -13161,8 +18319,7 @@ void FileTokenizer::createToken(TokenType type, size_t length, int64_t value)
 	token.type = type;
 	token.line = lineNumber;
 	token.column = linePos+1;
-	token.setOriginalText(currentLine,linePos,length);
-	token.intValue = value;
+	token.setValue(value, currentLine.substr(linePos, length));
 
 	linePos += length;
 }
@@ -13172,24 +18329,28 @@ void FileTokenizer::createToken(TokenType type, size_t length, double value)
 	token.type = type;
 	token.line = lineNumber;
 	token.column = linePos+1;
-	token.setOriginalText(currentLine,linePos,length);
-	token.floatValue = value;
+	token.setValue(value, currentLine.substr(linePos, length));
 
 	linePos += length;
 }
 
-void FileTokenizer::createToken(TokenType type, size_t length, const std::wstring& value)
+void FileTokenizer::createToken(TokenType type, size_t length, const std::string& value)
 {
 	createToken(type, length, value, 0, value.length());
 }
 
-void FileTokenizer::createToken(TokenType type, size_t length, const std::wstring& value, size_t valuePos, size_t valueLength)
+void FileTokenizer::createToken(TokenType type, size_t length, const std::string& value, size_t valuePos, size_t valueLength)
 {
 	token.type = type;
 	token.line = lineNumber;
 	token.column = linePos+1;
-	token.setOriginalText(currentLine,linePos,length);
-	token.setStringValue(value,valuePos,valueLength);
+
+	std::string valueStr = value.substr(valuePos, valueLength);
+	std::string originalStr = currentLine.substr(linePos, length);
+	if (type == TokenType::Identifier || type == TokenType::Equ)
+		token.setValue(Identifier(std::move(valueStr)), std::move(originalStr));
+	else
+		token.setValue(std::move(valueStr), std::move(originalStr));
 
 	linePos += length;
 }
@@ -13199,15 +18360,21 @@ void FileTokenizer::createTokenCurrentString(TokenType type, size_t length)
 	token.type = type;
 	token.line = lineNumber;
 	token.column = linePos+1;
-	token.setStringAndOriginalValue(currentLine,linePos,length);
+
+	std::string valueStr = currentLine.substr(linePos, length);
+	std::string originalStr = currentLine.substr(linePos, length);
+	if (type == TokenType::Identifier || type == TokenType::Equ)
+		token.setValue(Identifier(std::move(valueStr)), std::move(originalStr));
+	else
+		token.setValue(std::move(valueStr), std::move(originalStr));
 
 	linePos += length;
 }
 
 bool FileTokenizer::parseOperator()
 {
-	wchar_t first = currentLine[linePos];
-	wchar_t second = linePos+1 >= currentLine.size() ? '\0' : currentLine[linePos+1];
+	char first = currentLine[linePos];
+	char second = linePos+1 >= currentLine.size() ? '\0' : currentLine[linePos+1];
 
 	switch (first)
 	{
@@ -13308,9 +18475,13 @@ bool FileTokenizer::parseOperator()
 	case '$':
 		createToken(TokenType::Dollar,1);
 		return true;
-	case L'\U000000B0':	// degree sign
-		createToken(TokenType::Degree,1);
-		return true;
+	case char(0xC2):	// degree sign
+		if (second == char(0xB0))
+		{
+			createToken(TokenType::Degree,2);
+			return true;
+		}
+		break;
 	}
 
 	return false;
@@ -13323,10 +18494,10 @@ bool FileTokenizer::convertInteger(size_t start, size_t end, int64_t& result)
 
 bool FileTokenizer::convertFloat(size_t start, size_t end, double& result)
 {
-	std::wstring str = currentLine.substr(start, end - start);
-	wchar_t* end_ptr;
+	std::string str = currentLine.substr(start, end - start);
+	char* end_ptr;
 
-	result = wcstod(str.c_str(), &end_ptr);
+	result = strtod(str.c_str(), &end_ptr);
 	return str.c_str() + str.size() == end_ptr;
 }
 
@@ -13354,19 +18525,25 @@ Token FileTokenizer::loadToken()
 	if (parseOperator())
 		return std::move(token);
 
-	wchar_t first = currentLine[pos];
+	char first = currentLine[pos];
 
 	// character constants
-	if (first == '\'' && pos+2 < currentLine.size() && currentLine[pos+2] == '\'')
+	if (first == '\'')
 	{
-		createToken(TokenType::Integer,3,(int64_t)currentLine[pos+1]);
-		return std::move(token);
+		size_t decodePos = pos+1;
+
+		auto value = int64_t(decodeUtf8Character(currentLine, decodePos));
+		if (currentLine[decodePos] == '\'')
+		{
+			createToken(TokenType::Integer,decodePos+1-pos,value);
+			return std::move(token);
+		}
 	}
 
 	// strings
 	if (first == '"')
 	{
-		std::wstring text;
+		std::string text;
 		pos++;
 
 		bool valid = false;
@@ -13401,7 +18578,7 @@ Token FileTokenizer::loadToken()
 
 		if (!valid)
 		{
-			createToken(TokenType::Invalid,pos-linePos,L"Unexpected end of line in string constant");
+			createToken(TokenType::Invalid,pos-linePos, "Unexpected end of line in string constant");
 			return std::move(token);
 		}
 
@@ -13419,25 +18596,25 @@ Token FileTokenizer::loadToken()
 		bool foundPoint = false;
 		bool foundExp = false;
 		bool foundExpSign = false;
-		bool isHex = start+1 < currentLine.size() && currentLine[start] == '0' && towlower(currentLine[start+1]) == 'x';
+		bool isHex = start+1 < currentLine.size() && currentLine[start] == '0' && tolower(currentLine[start+1]) == 'x';
 
-		while (end < currentLine.size() && (iswalnum(currentLine[end]) || currentLine[end] == '.'))
+		while (end < currentLine.size() && (isalnum(currentLine[end]) || currentLine[end] == '.'))
 		{
 			if (currentLine[end] == '.')
 			{
 				if (foundExp || foundPoint)
 					isValid = false;
 				foundPoint = true;
-			} else if (towlower(currentLine[end]) == 'h' && !foundExpSign) {
+			} else if (tolower(currentLine[end]) == 'h' && !foundExpSign) {
 				isHex = true;
-			} else if (towlower(currentLine[end]) == 'e' && !isHex)
+			} else if (tolower(currentLine[end]) == 'e' && !isHex)
 			{
 				if (foundExp)
 				{
 					isValid = false;
 				} else if (end+1 < currentLine.size() && (currentLine[end+1] == '+' || currentLine[end+1] == '-')){
 					end++;
-					if (end+1 >= currentLine.size() || !iswalnum(currentLine[end+1]))
+					if (end+1 >= currentLine.size() || !isalnum(currentLine[end+1]))
 						isValid = false;
 					foundExpSign = true;
 				}
@@ -13452,7 +18629,7 @@ Token FileTokenizer::loadToken()
 		if (!isFloat)
 		{
 			int64_t value;
-			if (convertInteger(start,end,value) == false)
+			if (!convertInteger(start,end,value))
 			{
 				createTokenCurrentString(TokenType::NumberString,end-start);
 				return std::move(token);
@@ -13461,13 +18638,13 @@ Token FileTokenizer::loadToken()
 			createToken(TokenType::Integer,end-start,value);
 		} else { // isFloat
 			double value;
-			if (isValid == false)
+			if (!isValid)
 			{
-				createToken(TokenType::Invalid,end-start,L"Invalid floating point number");
+				createToken(TokenType::Invalid,end-start, "Invalid floating point number");
 				return std::move(token);
 			}
 
-			if (convertFloat(start,end,value) == false)
+			if (!convertFloat(start,end,value))
 			{
 				createTokenCurrentString(TokenType::NumberString,end-start);
 				return std::move(token);
@@ -13489,21 +18666,23 @@ Token FileTokenizer::loadToken()
 
 	if (pos == linePos)
 	{
-		std::wstring text = formatString(L"Invalid input '%c'",currentLine[pos]);
-		createToken(TokenType::Invalid,1,text);
+		auto characterStart = pos;
+		auto value = decodeUtf8Character(currentLine, pos);
+		std::string text = tfm::format("Invalid input '%s'",convertUnicodeCharToUtf8(value));
+		createToken(TokenType::Invalid,pos-characterStart,text);
 		return std::move(token);
 	}
 
-	std::wstring text = currentLine.substr(linePos,pos-linePos);
+	std::string text = currentLine.substr(linePos,pos-linePos);
 	bool textLowered = false;
 	// Lowercase is common, let's try to avoid a copy.
 	if (std::any_of(text.begin(), text.end(), ::iswupper))
 	{
-		std::transform(text.begin(), text.end(), text.begin(), ::towlower);
+		std::transform(text.begin(), text.end(), text.begin(), ::tolower);
 		textLowered = true;
 	}
 
-	if (text == L"equ")
+	if (text == "equ")
 	{
 		createToken(TokenType::Equ,pos-linePos);
 		equActive = true;
@@ -13514,6 +18693,11 @@ Token FileTokenizer::loadToken()
 	}
 
 	return std::move(token);
+}
+
+bool FileTokenizer::isInputAtEnd()
+{
+	return linePos >= currentLine.size() && input->atEnd();
 }
 
 bool FileTokenizer::init(TextFile* input)
@@ -13540,14 +18724,14 @@ bool FileTokenizer::init(TextFile* input)
 				if (linePos < currentLine.size())
 				{
 					createToken(TokenType::Invalid,0,
-						L"Unexpected character after line continuation character");
+						"Unexpected character after line continuation character");
 					addToken(token);
 				}
 
 				addSeparator = false;
 			} else if(linePos < currentLine.size())
 			{
-				addToken(std::move(loadToken()));
+				addToken(loadToken());
 			}
 
 			if (linePos >= currentLine.size())
@@ -13575,6 +18759,9 @@ bool FileTokenizer::init(TextFile* input)
 }
 
 // file: Util/ByteArray.cpp
+
+
+#include <cstring>
 
 ByteArray::ByteArray()
 {
@@ -13710,45 +18897,42 @@ ByteArray ByteArray::mid(size_t start, ssize_t length)
 	return ret;
 }
 
-ByteArray ByteArray::fromFile(const std::wstring& fileName, long start, size_t size)
+ByteArray ByteArray::fromFile(const fs::path& fileName, long start, size_t size)
 {
-	ByteArray ret;
+	fs::ifstream stream(fileName, fs::fstream::in | fs::fstream::binary);
+	if (!stream.is_open())
+		return {};
 
-	FILE* input = openFile(fileName,OpenFileMode::ReadBinary);
-	if (input == nullptr)
-		return ret;
-
-	fseek(input,0,SEEK_END);
-	long fileSize = ftell(input);
-
+	auto fileSize = fs::file_size(fileName);
 	if (start >= fileSize)
-	{
-		fclose(input);
-		return ret;
-	}
+		return {};
 
 	if (size == 0 || start+(long)size > fileSize)
 		size = fileSize-start;
 
-	fseek(input,start,SEEK_SET);
+	stream.seekg(start);
 
+	ByteArray ret;
 	ret.grow(size);
-	ret.size_ = fread(ret.data(),1,size,input);
-	fclose(input);
+
+	stream.read(reinterpret_cast<char *>(ret.data()), size);
+	ret.size_ = stream.gcount();
 
 	return ret;
 }
 
-bool ByteArray::toFile(const std::wstring& fileName)
+bool ByteArray::toFile(const fs::path& fileName)
 {
-	FILE* output = openFile(fileName,OpenFileMode::WriteBinary);
-	if (output == nullptr) return false;
-	size_t length = fwrite(data_,1,size_,output);
-	fclose(output);
-	return length == size_;
+	fs::ofstream stream(fileName, fs::fstream::out | fs::fstream::binary | fs::fstream::trunc);
+	if (!stream.is_open())
+		return {};
+
+	stream.write(reinterpret_cast<const char *>(data_), size_);
+	return !stream.fail();
 }
 
 // file: Util/CRC.cpp
+
 #include <stdio.h>
 
 const unsigned short Crc16Table[] = /* CRC lookup table */
@@ -13856,6 +19040,7 @@ unsigned int getChecksum(unsigned char* Source, size_t len)
 
 // file: Util/EncodingTable.cpp
 
+
 #define MAXHEXLENGTH 32
 
 Trie::Trie()
@@ -13864,7 +19049,7 @@ Trie::Trie()
 	nodes.push_back(root);
 }
 
-void Trie::insert(const wchar_t* text, size_t value)
+void Trie::insert(const char* text, size_t value)
 {
 	size_t node = 0;	// root node
 
@@ -13897,15 +19082,7 @@ void Trie::insert(const wchar_t* text, size_t value)
 	nodes[node].value = value;
 }
 
-void Trie::insert(wchar_t character, size_t value)
-{
-	wchar_t str[2];
-	str[0] = character;
-	str[1] = 0;
-	insert(str,value);
-}
-
-bool Trie::findLongestPrefix(const wchar_t* text, size_t& result)
+bool Trie::findLongestPrefix(const char* text, size_t& result)
 {
 	size_t node = 0;		// root node
 	size_t valueNode = 0;	// remember last node that had a value
@@ -13931,15 +19108,9 @@ bool Trie::findLongestPrefix(const wchar_t* text, size_t& result)
 	return nodes[valueNode].hasValue;
 }
 
-EncodingTable::EncodingTable()
-{
+EncodingTable::EncodingTable() = default;
 
-}
-
-EncodingTable::~EncodingTable()
-{
-
-}
+EncodingTable::~EncodingTable() = default;
 
 void EncodingTable::clear()
 {
@@ -13947,11 +19118,11 @@ void EncodingTable::clear()
 	entries.clear();
 }
 
-int parseHexString(std::wstring& hex, unsigned char* dest)
+int parseHexString(std::string& hex, unsigned char* dest)
 {
 	for (size_t i = 0; i < hex.size(); i++)
 	{
-		wchar_t source = towlower(hex[i]);
+		int source = tolower(hex[i]);
 		int value;
 
 		if (source >= 'a' && source <= 'f')
@@ -13974,12 +19145,12 @@ int parseHexString(std::wstring& hex, unsigned char* dest)
 	return (int) hex.size()/2;
 }
 
-bool EncodingTable::load(const std::wstring& fileName, TextFile::Encoding encoding)
+bool EncodingTable::load(const fs::path& fileName, TextFile::Encoding encoding)
 {
 	unsigned char hexBuffer[MAXHEXLENGTH];
 
 	TextFile input;
-	if (input.open(fileName,TextFile::Read,encoding) == false)
+	if (!input.open(fileName,TextFile::Read,encoding))
 		return false;
 
 	hexData.clear();
@@ -13988,12 +19159,12 @@ bool EncodingTable::load(const std::wstring& fileName, TextFile::Encoding encodi
 
 	while (!input.atEnd())
 	{
-		std::wstring line = input.readLine();
+		const std::string &line = input.readLine();
 		if (line.empty() || line[0] == '*') continue;
 
 		if (line[0] == '/')
 		{
-			std::wstring hex = line.substr(1);
+			std::string hex = line.substr(1);
 			if (hex.empty() || hex.length() > 2*MAXHEXLENGTH)
 			{
 				// error
@@ -14010,8 +19181,8 @@ bool EncodingTable::load(const std::wstring& fileName, TextFile::Encoding encodi
 			setTerminationEntry(hexBuffer,length);
 		} else {
 			size_t pos = line.find(L'=');
-			std::wstring hex = line.substr(0,pos);
-			std::wstring value = line.substr(pos+1);
+			std::string hex = line.substr(0,pos);
+			std::string value = line.substr(pos+1);
 
 			if (hex.empty() || value.empty() || hex.length() > 2*MAXHEXLENGTH)
 			{
@@ -14033,7 +19204,7 @@ bool EncodingTable::load(const std::wstring& fileName, TextFile::Encoding encodi
 	return true;
 }
 
-void EncodingTable::addEntry(unsigned char* hex, size_t hexLength, const std::wstring& value)
+void EncodingTable::addEntry(unsigned char* hex, size_t hexLength, const std::string& value)
 {
 	if (value.size() == 0)
 		return;
@@ -14051,25 +19222,6 @@ void EncodingTable::addEntry(unsigned char* hex, size_t hexLength, const std::ws
 	entries.push_back(entry);
 }
 
-void EncodingTable::addEntry(unsigned char* hex, size_t hexLength, wchar_t value)
-{
-	if (value == '\0')
-		return;
-
-	// insert into trie
-	size_t index = entries.size();
-	lookup.insert(value,index);
-
-	// add entry
-	TableEntry entry;
-	entry.hexPos = hexData.append(hex,hexLength);
-	entry.hexLen = hexLength;
-	entry.valueLen = 1;
-
-	entries.push_back(entry);
-
-}
-
 void EncodingTable::setTerminationEntry(unsigned char* hex, size_t hexLength)
 {
 	terminationEntry.hexPos = hexData.append(hex,hexLength);
@@ -14077,7 +19229,7 @@ void EncodingTable::setTerminationEntry(unsigned char* hex, size_t hexLength)
 	terminationEntry.valueLen = 0;
 }
 
-ByteArray EncodingTable::encodeString(const std::wstring& str, bool writeTermination)
+ByteArray EncodingTable::encodeString(const std::string& str, bool writeTermination)
 {
 	ByteArray result;
 
@@ -14085,7 +19237,7 @@ ByteArray EncodingTable::encodeString(const std::wstring& str, bool writeTermina
 	while (pos < str.size())
 	{
 		size_t index;
-		if (lookup.findLongestPrefix(str.c_str()+pos,index) == false)
+		if (!lookup.findLongestPrefix(str.c_str()+pos,index))
 		{
 			// error
 			return ByteArray();
@@ -14127,7 +19279,35 @@ ByteArray EncodingTable::encodeTermination()
 
 // file: Util/FileClasses.cpp
 
-const wchar_t SjisToUnicodeTable1[] =
+
+#include <cassert>
+#include <cstring>
+
+
+namespace
+{
+	void encodeUtf8(std::string &dest, char32_t character)
+	{
+		if (character < 0x80)
+		{
+			dest += character & 0x7F;
+		}
+		else if (character < 0x800)
+		{
+			dest += 0xC0 | ((character >> 6) & 0x1F);
+			dest += (0x80 | (character & 0x3F));
+		}
+		else
+		{
+			dest += 0xE0 | ((character >> 12) & 0xF);
+			dest += 0x80 | ((character >> 6) & 0x3F);
+			dest += 0x80 | (character & 0x3F);
+		}
+	}
+}
+
+
+const char16_t SjisToUnicodeTable1[] =
 {
 	// 0X0080 to 0X00FF
 	0x0080, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
@@ -14140,7 +19320,7 @@ const wchar_t SjisToUnicodeTable1[] =
 	0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
 };
 
-const wchar_t SjisToUnicodeTable2[] =
+const char16_t SjisToUnicodeTable2[] =
 {
 	// 0X8100 to 0X81FF
 	0x3000, 0x3001, 0x3002, 0xFF0C, 0xFF0E, 0x30FB, 0xFF1A, 0xFF1B, 0xFF1F, 0xFF01, 0x309B, 0x309C, 0x00B4, 0xFF40, 0x00A8, 0xFF3E,
@@ -14196,7 +19376,7 @@ const wchar_t SjisToUnicodeTable2[] =
 	0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
 };
 
-const wchar_t SjisToUnicodeTable3[] =
+const char16_t SjisToUnicodeTable3[] =
 {
 	// 0X8700 to 0X87FF
 	0x2460, 0x2461, 0x2462, 0x2463, 0x2464, 0x2465, 0x2466, 0x2467, 0x2468, 0x2469, 0x246A, 0x246B, 0x246C, 0x246D, 0x246E, 0x246F,
@@ -14525,7 +19705,7 @@ const wchar_t SjisToUnicodeTable3[] =
 	0x6E9F, 0x6F41, 0x6F11, 0x704C, 0x6EEC, 0x6EF8, 0x6EFE, 0x6F3F, 0x6EF2, 0x6F31, 0x6EEF, 0x6F32, 0x6ECC, 0xFFFF, 0xFFFF, 0xFFFF,
 };
 
-const wchar_t SjisToUnicodeTable4[] =
+const char16_t SjisToUnicodeTable4[] =
 {
 	// 0XE000 to 0XE0FF
 	0x6F3E, 0x6F13, 0x6EF7, 0x6F86, 0x6F7A, 0x6F78, 0x6F81, 0x6F80, 0x6F6F, 0x6F5B, 0x6FF3, 0x6F6D, 0x6F82, 0x6F7C, 0x6F58, 0x6F8E,
@@ -14672,7 +19852,7 @@ const wchar_t SjisToUnicodeTable4[] =
 	0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
 };
 
-const wchar_t SjisToUnicodeTable5[] =
+const char16_t SjisToUnicodeTable5[] =
 {
 	// 0XED00 to 0XEDFF
 	0x7E8A, 0x891C, 0x9348, 0x9288, 0x84DC, 0x4FC9, 0x70BB, 0x6631, 0x68C8, 0x92F9, 0x66FB, 0x5F45, 0x4E28, 0x4EE1, 0x4EFC, 0x4F00,
@@ -14702,7 +19882,7 @@ const wchar_t SjisToUnicodeTable5[] =
 	0x2171, 0x2172, 0x2173, 0x2174, 0x2175, 0x2176, 0x2177, 0x2178, 0x2179, 0xFFE2, 0xFFE4, 0xFF07, 0xFF02, 0xFFFF, 0xFFFF, 0xFFFF,
 };
 
-wchar_t sjisToUnicode(unsigned short SjisCharacter)
+std::optional<char16_t> sjisToUnicode(unsigned short SjisCharacter)
 {
 	if (SjisCharacter < 0x80)
 	{
@@ -14712,7 +19892,8 @@ wchar_t sjisToUnicode(unsigned short SjisCharacter)
 		return SjisToUnicodeTable1[SjisCharacter-0x80];
 	}
 
-	if ((SjisCharacter & 0xFF) < 0x40) return 0xFFFF;
+	if ((SjisCharacter & 0xFF) < 0x40)
+		return std::nullopt;
 
 	if (SjisCharacter >= 0x8100 && SjisCharacter < 0x8500)
 	{
@@ -14735,92 +19916,14 @@ wchar_t sjisToUnicode(unsigned short SjisCharacter)
 		SjisCharacter -= (SjisCharacter >> 8) * 0x40;
 		return SjisToUnicodeTable5[SjisCharacter];
 	} else {
-		return 0xFFFF;
+		return std::nullopt;
 	}
-}
-
-BinaryFile::BinaryFile()
-{
-	handle = nullptr;
-}
-
-BinaryFile::~BinaryFile()
-{
-	close();
-}
-
-bool BinaryFile::open(const std::wstring& fileName, Mode mode)
-{
-	setFileName(fileName);
-	return open(mode);
-}
-
-bool BinaryFile::open(Mode mode)
-{
-	if (isOpen())
-		close();
-
-	this->mode = mode;
-
-	// open all files as binary due to unicode
-	switch (mode)
-	{
-	case Read:
-		handle = openFile(fileName,OpenFileMode::ReadBinary);
-		break;
-	case Write:
-		handle = openFile(fileName,OpenFileMode::WriteBinary);
-		break;
-	case ReadWrite:
-		handle = openFile(fileName,OpenFileMode::ReadWriteBinary);
-		break;
-	default:
-		return false;
-	}
-
-	if (handle == nullptr)
-		return false;
-
-	if (mode != Write)
-	{
-		fseek(handle,0,SEEK_END);
-		size_ = ftell(handle);
-		fseek(handle,0,SEEK_SET);
-	}
-
-	return true;
-}
-
-void BinaryFile::close()
-{
-	if (isOpen())
-	{
-		fclose(handle);
-		handle = nullptr;
-	}
-}
-
-size_t BinaryFile::read(void* dest, size_t length)
-{
-	if (isOpen() == false || mode == Write)
-		return 0;
-
-	return fread(dest,1,length,handle);
-}
-
-size_t BinaryFile::write(void* source, size_t length)
-{
-	if (isOpen() == false || mode == Read)
-		return 0;
-
-	return fwrite(source,1,length,handle);
 }
 
 const size_t TEXTFILE_BUF_MAX_SIZE = 4096;
 
 TextFile::TextFile()
 {
-	handle = nullptr;
 	recursion = false;
 	errorRetrieved = false;
 	fromMemory = false;
@@ -14833,18 +19936,18 @@ TextFile::~TextFile()
 	close();
 }
 
-void TextFile::openMemory(const std::wstring& content)
+void TextFile::openMemory(const std::string& content)
 {
 	fromMemory = true;
 	this->content = content;
 	contentPos = 0;
 	size_ = (long) content.size();
-	encoding = UTF16LE;
+	encoding = UTF8;
 	mode = Read;
 	lineCount = 0;
 }
 
-bool TextFile::open(const std::wstring& fileName, Mode mode, Encoding defaultEncoding)
+bool TextFile::open(const fs::path& fileName, Mode mode, Encoding defaultEncoding)
 {
 	setFileName(fileName);
 	return open(mode,defaultEncoding);
@@ -14867,71 +19970,71 @@ bool TextFile::open(Mode mode, Encoding defaultEncoding)
 	switch (mode)
 	{
 	case Read:
-		handle = openFile(fileName,OpenFileMode::ReadBinary);
+		stream.open(fileName, fs::fstream::in | fs::fstream::binary);
+
+		if (!stream.is_open())
+			return false;
 		break;
 	case Write:
-		handle = openFile(fileName,OpenFileMode::WriteBinary);
-		if (handle == nullptr)
+		stream.open(fileName, fs::fstream::out | fs::fstream::binary | fs::fstream::trunc);
+
+		if (!stream.is_open())
 			return false;
 
 		buf.resize(TEXTFILE_BUF_MAX_SIZE);
 		if (encoding != ASCII)
 		{
 			encoding = UTF8;
-			writeCharacter(0xFEFF);
+			bufPut(char(0xEF));
+			bufPut(char(0xBB));
+			bufPut(char(0xBF));
 		}
 		break;
-	default:
-		return false;
 	}
 
-	if (handle == nullptr)
-		return false;
-
 	// detect encoding
-	unsigned short num;
+	unsigned char numBuffer[3] = {0};
 	contentPos = 0;
 
 	if (mode == Read)
 	{
-		fseek(handle,0,SEEK_END);
-		size_ = ftell(handle);
-		fseek(handle,0,SEEK_SET);
+		size_ = long(fs::file_size(fileName));
 
-		if (fread(&num,2,1,handle) == 1)
+		stream.read(reinterpret_cast<char *>(numBuffer), 3);
+		switch (numBuffer[0] | (numBuffer[1] << 8))
 		{
-			switch (num)
+		case 0xFFFE:
+			encoding = UTF16BE;
+			stream.seekg(2);
+			contentPos = 2;
+			break;
+		case 0xFEFF:
+			encoding = UTF16LE;
+			stream.seekg(2);
+			contentPos = 2;
+			break;
+		case 0xBBEF:
+			if (numBuffer[2] == 0xBF)
 			{
-			case 0xFFFE:
-				encoding = UTF16BE;
-				contentPos += 2;
-				break;
-			case 0xFEFF:
-				encoding = UTF16LE;
-				contentPos += 2;
-				break;
-			case 0xBBEF:
-				if (fgetc(handle) == 0xBF)
-				{
-					encoding = UTF8;
-					contentPos += 3;
-					break;
-				} // fallthrough
-			default:
-				if (defaultEncoding == GUESS)
-				{
-					encoding = UTF8;
-					guessedEncoding = true;
-				}
-				fseek(handle,0,SEEK_SET);
+				encoding = UTF8;
+				contentPos = 3;
 				break;
 			}
-		} else {
+			[[fallthrough]];
+		default:
 			if (defaultEncoding == GUESS)
 			{
 				encoding = UTF8;
 				guessedEncoding = true;
 			}
+			stream.seekg(0);
+			break;
+		}
+	} else {
+		if (defaultEncoding == GUESS)
+		{
+			encoding = UTF8;
+			guessedEncoding = true;
 		}
 	}
 
@@ -14943,8 +20046,7 @@ void TextFile::close()
 	if (isOpen() && !fromMemory)
 	{
 		bufDrainWrite();
-		fclose(handle);
-		handle = nullptr;
+		stream.close();
 	}
 	bufPos = 0;
 }
@@ -14959,7 +20061,7 @@ void TextFile::seek(long pos)
 	if (fromMemory)
 		contentPos = pos;
 	else
-		fseek(handle,pos,SEEK_SET);
+		stream.seekg(pos);
 }
 
 void TextFile::bufFillRead()
@@ -14967,22 +20069,20 @@ void TextFile::bufFillRead()
 	assert(mode == Read);
 
 	buf.resize(TEXTFILE_BUF_MAX_SIZE);
-	size_t read = fread(&buf[0], 1, TEXTFILE_BUF_MAX_SIZE, handle);
-	buf.resize(read);
-
+	stream.read(&buf[0], TEXTFILE_BUF_MAX_SIZE);
+	buf.resize(stream.gcount());
 	bufPos = 0;
 }
 
-wchar_t TextFile::readCharacter()
+char32_t TextFile::readCharacter()
 {
-	wchar_t value;
+	char32_t value = 0;
 
 	switch (encoding)
 	{
 	case UTF8:
 		{
 			value = bufGetChar();
-			contentPos++;
 
 			int extraBytes = 0;
 			if ((value & 0xE0) == 0xC0)
@@ -14995,17 +20095,15 @@ wchar_t TextFile::readCharacter()
 				value &= 0x0F;
 			} else if (value > 0x7F)
 			{
-				errorText = formatString(L"One or more invalid UTF-8 characters in this file");
+				errorText = tfm::format("One or more invalid UTF-8 characters in this file");
 			}
 
 			for (int i = 0; i < extraBytes; i++)
 			{
 				int b = bufGetChar();
-				contentPos++;
-
 				if ((b & 0xC0) != 0x80)
 				{
-					errorText = formatString(L"One or more invalid UTF-8 characters in this file");
+					errorText = tfm::format("One or more invalid UTF-8 characters in this file");
 				}
 
 				value = (value << 6) | (b & 0x3F);
@@ -15013,49 +20111,39 @@ wchar_t TextFile::readCharacter()
 		}
 		break;
 	case UTF16LE:
-		if (fromMemory)
-		{
-			value = content[contentPos++];
-		} else {
-			value = bufGet16LE();
-			contentPos += 2;
-		}
+		value = bufGet16LE();
 		break;
 	case UTF16BE:
 		value = bufGet16BE();
-		contentPos += 2;
 		break;
 	case SJIS:
 		{
 			unsigned short sjis = bufGetChar();
-			contentPos++;
 			if (sjis >= 0x80)
-			{
 				sjis = (sjis << 8) | bufGetChar();
-				contentPos++;
-			}
-			value = sjisToUnicode(sjis);
-			if (value == (wchar_t)-1)
-			{
-				errorText = formatString(L"One or more invalid Shift-JIS characters in this file");
-			}
+
+			if (auto unicode = sjisToUnicode(sjis))
+				value = *unicode;
+			else
+				errorText = tfm::format("One or more invalid Shift-JIS characters in this file");
 		}
 		break;
 	case ASCII:
 		value = bufGetChar();
 		contentPos++;
 		break;
+
 	case GUESS:
-		errorText = formatString(L"Cannot read from GUESS encoding");
+		errorText = tfm::format("Cannot read from GUESS encoding");
 		break;
 	}
 
 	// convert \r\n to \n
-	if (value == L'\r' && recursion == false && atEnd() == false)
+	if (value == L'\r' && !recursion && !atEnd())
 	{
 		recursion = true;
 		long pos = tell();
-		wchar_t nextValue = readCharacter();
+		char32_t nextValue = readCharacter();
 		recursion = false;
 
 		if (nextValue == L'\n')
@@ -15066,16 +20154,16 @@ wchar_t TextFile::readCharacter()
 	return value;
 }
 
-std::wstring TextFile::readLine()
+std::string TextFile::readLine()
 {
-	std::wstring result;
-	wchar_t value;
+	std::string result;
+	char32_t value;
 
 	if (isOpen())
 	{
 		while (tell() < size() && (value = readCharacter()) != L'\n')
 		{
-			result += value;
+			encodeUtf8(result, value);
 		}
 	}
 
@@ -15083,9 +20171,9 @@ std::wstring TextFile::readLine()
 	return result;
 }
 
-StringList TextFile::readAll()
+std::vector<std::string> TextFile::readAll()
 {
-	StringList result;
+	std::vector<std::string> result;
 	while (!atEnd())
 	{
 		result.push_back(readLine());
@@ -15102,7 +20190,7 @@ void TextFile::bufPut(const void *p, const size_t len)
 	{
 		// Lots of data.  Let's write directly.
 		bufDrainWrite();
-		fwrite(p, 1, len, handle);
+		stream.write(reinterpret_cast<const char*>(p), len);
 	}
 	else
 	{
@@ -15126,59 +20214,21 @@ void TextFile::bufPut(const char c)
 
 void TextFile::bufDrainWrite()
 {
-	fwrite(&buf[0], 1, bufPos, handle);
+	stream.write(buf.c_str(), bufPos);
 	bufPos = 0;
-}
-
-void TextFile::writeCharacter(wchar_t character)
-{
-	if (mode != Write) return;
-
-	// only support utf8 for now
-	if (character < 0x80)
-	{
-#ifdef _WIN32
-		if (character == L'\n')
-		{
-			bufPut('\r');
-		}
-#endif
-		bufPut(character & 0x7F);
-	} else if (encoding != ASCII)
-	{
-		if (character < 0x800)
-		{
-			bufPut(0xC0 | ((character >> 6) & 0x1F));
-			bufPut(0x80 | (character & 0x3F));
-		} else {
-			bufPut(0xE0 | ((character >> 12) & 0xF));
-			bufPut(0x80 | ((character >> 6) & 0x3F));
-			bufPut(0x80 | (character & 0x3F));
-		}
-	}
-}
-
-void TextFile::write(const wchar_t* line)
-{
-	if (mode != Write) return;
-	while (*line != 0)
-	{
-		writeCharacter(*line);
-		line++;
-	}
-}
-
-void TextFile::write(const std::wstring& line)
-{
-	write(line.c_str());
 }
 
 void TextFile::write(const char* line)
 {
 	if (mode != Write) return;
+
 	while (*line != 0)
 	{
-		writeCharacter(*line);
+#ifdef _WIN32
+		if (*line == '\n')
+			bufPut('\r');
+#endif
+		bufPut(*line);
 		line++;
 	}
 }
@@ -15188,23 +20238,11 @@ void TextFile::write(const std::string& line)
 	write(line.c_str());
 }
 
-void TextFile::writeLine(const wchar_t* line)
-{
-	if (mode != Write) return;
-	write(line);
-	writeCharacter(L'\n');
-}
-
-void TextFile::writeLine(const std::wstring& line)
-{
-	writeLine(line.c_str());
-}
-
 void TextFile::writeLine(const char* line)
 {
 	if (mode != Write) return;
 	write(line);
-	writeCharacter(L'\n');
+	bufPut('\n');
 }
 
 void TextFile::writeLine(const std::string& line)
@@ -15212,7 +20250,7 @@ void TextFile::writeLine(const std::string& line)
 	writeLine(line.c_str());
 }
 
-void TextFile::writeLines(StringList& list)
+void TextFile::writeLines(std::vector<std::string>& list)
 {
 	for (size_t i = 0; i < list.size(); i++)
 	{
@@ -15222,27 +20260,30 @@ void TextFile::writeLines(StringList& list)
 
 struct EncodingValue
 {
-	const wchar_t* name;
+	const char* name;
 	TextFile::Encoding value;
 };
 
 const EncodingValue encodingValues[] = {
-	{ L"sjis",			TextFile::SJIS },
-	{ L"shift-jis",		TextFile::SJIS },
-	{ L"utf8",			TextFile::UTF8 },
-	{ L"utf-8",			TextFile::UTF8 },
-	{ L"utf16",			TextFile::UTF16LE },
-	{ L"utf-16",		TextFile::UTF16LE },
-	{ L"utf16-be",		TextFile::UTF16BE },
-	{ L"utf-16-be",		TextFile::UTF16BE },
-	{ L"ascii",			TextFile::ASCII },
+	{ "sjis",			TextFile::SJIS },
+	{ "shift-jis",		TextFile::SJIS },
+	{ "utf8",			TextFile::UTF8 },
+	{ "utf-8",			TextFile::UTF8 },
+	{ "utf16",			TextFile::UTF16LE },
+	{ "utf-16",		TextFile::UTF16LE },
+	{ "utf16-be",		TextFile::UTF16BE },
+	{ "utf-16-be",		TextFile::UTF16BE },
+	{ "ascii",			TextFile::ASCII },
 };
 
-TextFile::Encoding getEncodingFromString(const std::wstring& str)
+TextFile::Encoding getEncodingFromString(const std::string& str)
 {
+	auto lowerCase = str;
+	std::transform(lowerCase.begin(), lowerCase.end(), lowerCase.begin(), &::tolower);
+
 	for (size_t i = 0; i < sizeof(encodingValues)/sizeof(EncodingValue); i++)
 	{
-		if (str.compare(encodingValues[i].name) == 0)
+		if (lowerCase.compare(encodingValues[i].name) == 0)
 			return encodingValues[i].value;
 	}
 
@@ -15250,62 +20291,11 @@ TextFile::Encoding getEncodingFromString(const std::wstring& str)
 }
 
 // file: Util/Util.cpp
-#include <sys/stat.h>
-#ifdef _WIN32
-#include <windows.h>
-#include <shlwapi.h>
-#if defined(WINAPI_FAMILY) && defined(WINAPI_FAMILY_PARTITION)
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) && WINAPI_FAMILY != WINAPI_FAMILY_DESKTOP_APP
-#define ARMIPS_WINDOWS_UWP
-#endif
-#endif
-#else
-#include <unistd.h>
-#endif
 
-std::wstring convertUtf8ToWString(const char* source)
-{
-	std::wstring result;
+#include <cstring>
+#include <sstream>
 
-	int index = 0;
-	while (source[index] != 0)
-	{
-		int extraBytes = 0;
-		int value = source[index++];
-
-		if ((value & 0xE0) == 0xC0)
-		{
-			extraBytes = 1;
-			value &= 0x1F;
-		} else if ((value & 0xF0) == 0xE0)
-		{
-			extraBytes = 2;
-			value &= 0x0F;
-		} else if (value > 0x7F)
-		{
-			// error
-			return std::wstring();
-		}
-
-		for (int i = 0; i < extraBytes; i++)
-		{
-			int b = source[index++];
-			if ((b & 0xC0) != 0x80)
-			{
-			// error
-			return std::wstring();
-			}
-
-			value = (value << 6) | (b & 0x3F);
-		}
-
-		result += value;
-	}
-
-	return result;
-}
-
-std::string convertWCharToUtf8(wchar_t character)
+std::string convertUnicodeCharToUtf8(char32_t character)
 {
 	std::string result;
 
@@ -15325,7 +20315,7 @@ std::string convertWCharToUtf8(wchar_t character)
 	return result;
 }
 
-std::string convertWStringToUtf8(const std::wstring& source)
+std::string convertWStringToUtf8(std::wstring_view source)
 {
 	std::string result;
 
@@ -15349,63 +20339,21 @@ std::string convertWStringToUtf8(const std::wstring& source)
 	return result;
 }
 
-std::wstring intToHexString(unsigned int value, int digits, bool prefix)
-{
-	std::wstring result;
-	result.reserve((digits+prefix) ? 2 : 0);
-
-	if (prefix)
-	{
-		result += '0';
-		result += 'x';
-	}
-
-	while (digits > 8)
-	{
-		result += '0';
-		digits--;
-	}
-
-	wchar_t buf[9];
-	swprintf(buf,9,L"%0*X",digits,value);
-	result += buf;
-
-	return result;
-}
-
-std::wstring intToString(unsigned int value, int digits)
-{
-	std::wstring result;
-	result.reserve(digits);
-
-	while (digits > 8)
-	{
-		result += ' ';
-		digits--;
-	}
-
-	wchar_t buf[9];
-	swprintf(buf,9,L"%*d",digits,value);
-	result += buf;
-
-	return result;
-}
-
-bool stringToInt(const std::wstring& line, size_t start, size_t end, int64_t& result)
+bool stringToInt(const std::string& line, size_t start, size_t end, int64_t& result)
 {
 	// find base of number
 	int32_t base = 10;
 	if (line[start] == '0')
 	{
-		if (towlower(line[start+1]) == 'x')
+		if (tolower(line[start+1]) == 'x')
 		{
 			base = 16;
 			start += 2;
-		} else if (towlower(line[start+1]) == 'o')
+		} else if (tolower(line[start+1]) == 'o')
 		{
 			base = 8;
 			start += 2;
-		} else if (towlower(line[start+1]) == 'b' && towlower(line[end-1]) != 'h')
+		} else if (tolower(line[start+1]) == 'b' && tolower(line[end-1]) != 'h')
 		{
 			base = 2;
 			start += 2;
@@ -15414,15 +20362,15 @@ bool stringToInt(const std::wstring& line, size_t start, size_t end, int64_t& re
 
 	if (base == 10)
 	{
-		if (towlower(line[end-1]) == 'h')
+		if (tolower(line[end-1]) == 'h')
 		{
 			base = 16;
 			end--;
-		} else if (towlower(line[end-1]) == 'b')
+		} else if (tolower(line[end-1]) == 'b')
 		{
 			base = 2;
 			end--;
-		} else if (towlower(line[end-1]) == 'o')
+		} else if (tolower(line[end-1]) == 'o')
 		{
 			base = 8;
 			end--;
@@ -15433,7 +20381,7 @@ bool stringToInt(const std::wstring& line, size_t start, size_t end, int64_t& re
 	result = 0;
 	while (start < end)
 	{
-		wchar_t c = towlower(line[start++]);
+		int c = tolower(line[start++]);
 
 		int32_t value = c >= 'a' ? c-'a'+10 : c-'0';
 
@@ -15467,164 +20415,9 @@ int64_t getDoubleBits(double value)
 	return u.i;
 }
 
-StringList getStringListFromArray(wchar_t** source, int count)
+std::string toLowercase(const std::string& str)
 {
-	StringList result;
-	for (int i = 0; i < count; i++)
-	{
-		result.push_back(std::wstring(source[i]));
-	}
-
-	return result;
-}
-
-StringList splitString(const std::wstring& str, const wchar_t delim, bool skipEmpty)
-{
-	StringList result;
-	std::wstringstream stream(str);
-	std::wstring arg;
-	while (std::getline(stream,arg,delim))
-	{
-		if (arg.empty() && skipEmpty) continue;
-		result.push_back(arg);
-	}
-
-	return result;
-}
-
-int64_t fileSize(const std::wstring& fileName)
-{
-#ifdef _WIN32
-	WIN32_FILE_ATTRIBUTE_DATA attr;
-	if (!GetFileAttributesEx(fileName.c_str(),GetFileExInfoStandard,&attr)
-		|| (attr.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-		return 0;
-	return ((int64_t) attr.nFileSizeHigh << 32) | (int64_t) attr.nFileSizeLow;
-#else
-	std::string utf8 = convertWStringToUtf8(fileName);
-	struct stat fileStat;
-	int err = stat(utf8.c_str(),&fileStat);
-	if (0 != err)
-		return 0;
-	return fileStat.st_size;
-#endif
-}
-
-bool fileExists(const std::wstring& strFilename)
-{
-#ifdef _WIN32
-#ifdef ARMIPS_WINDOWS_UWP
-	return GetFileAttributes(strFilename.c_str()) != INVALID_FILE_ATTRIBUTES;
-#else
-	int OldMode = SetErrorMode(SEM_FAILCRITICALERRORS);
-	bool success = GetFileAttributes(strFilename.c_str()) != INVALID_FILE_ATTRIBUTES;
-	SetErrorMode(OldMode);
-	return success;
-#endif
-#else
-	std::string utf8 = convertWStringToUtf8(strFilename);
-	struct stat stFileInfo;
-	int intStat = stat(utf8.c_str(),&stFileInfo);
-	return intStat == 0;
-#endif
-}
-
-bool copyFile(const std::wstring& existingFile, const std::wstring& newFile)
-{
-#ifdef _WIN32
-	return CopyFileW(existingFile.c_str(),newFile.c_str(),false) != FALSE;
-#else
-	unsigned char buffer[BUFSIZ];
-	bool error = false;
-
-	std::string existingUtf8 = convertWStringToUtf8(existingFile);
-	std::string newUtf8 = convertWStringToUtf8(newFile);
-
-	FILE* input = fopen(existingUtf8.c_str(),"rb");
-	FILE* output = fopen(newUtf8.c_str(),"wb");
-
-	if (input == nullptr || output == nullptr)
-		return false;
-
-	size_t n;
-	while ((n = fread(buffer,1,BUFSIZ,input)) > 0)
-	{
-		if (fwrite(buffer,1,n,output) != n)
-			error = true;
-	}
-
-	fclose(input);
-	fclose(output);
-	return !error;
-#endif
-}
-
-bool deleteFile(const std::wstring& fileName)
-{
-#ifdef _WIN32
-	return DeleteFileW(fileName.c_str()) != FALSE;
-#else
-	std::string utf8 = convertWStringToUtf8(fileName);
-	return unlink(utf8.c_str()) == 0;
-#endif
-}
-
-FILE* openFile(const std::wstring& fileName, OpenFileMode mode)
-{
-#ifdef _WIN32
-	switch (mode)
-	{
-	case OpenFileMode::ReadBinary:
-		return _wfopen(fileName.c_str(),L"rb");
-	case OpenFileMode::WriteBinary:
-		return _wfopen(fileName.c_str(),L"wb");
-	case OpenFileMode::ReadWriteBinary:
-		return _wfopen(fileName.c_str(),L"rb+");
-	}
-#else
-	std::string nameUtf8 = convertWStringToUtf8(fileName);
-
-	switch (mode)
-	{
-	case OpenFileMode::ReadBinary:
-		return fopen(nameUtf8.c_str(),"rb");
-	case OpenFileMode::WriteBinary:
-		return fopen(nameUtf8.c_str(),"wb");
-	case OpenFileMode::ReadWriteBinary:
-		return fopen(nameUtf8.c_str(),"rb+");
-	}
-#endif
-
-	return nullptr;
-}
-
-std::wstring getCurrentDirectory()
-{
-#ifdef _WIN32
-	wchar_t dir[MAX_PATH];
-	_wgetcwd(dir,MAX_PATH-1);
-	return dir;
-#else
-	char* dir = getcwd(nullptr,0);
-	std::wstring result = convertUtf8ToWString(dir);
-	free(dir);
-	return result;
-#endif
-}
-
-bool changeDirectory(const std::wstring& dir)
-{
-#ifdef _WIN32
-	return _wchdir(dir.c_str()) == 0;
-#else
-	std::string utf8 = convertWStringToUtf8(dir);
-	return chdir(utf8.c_str()) == 0;
-#endif
-}
-
-std::wstring toWLowercase(const std::string& str)
-{
-	std::wstring result;
+	std::string result;
 	for (size_t i = 0; i < str.size(); i++)
 	{
 		result += tolower(str[i]);
@@ -15633,18 +20426,10 @@ std::wstring toWLowercase(const std::string& str)
 	return result;
 }
 
-std::wstring getFileNameFromPath(const std::wstring& path)
-{
-	size_t n = path.find_last_of(L"/\\");
-	if (n == path.npos)
-		return path;
-	return path.substr(n);
-}
-
-size_t replaceAll(std::wstring& str, const wchar_t* oldValue,const std::wstring& newValue)
+size_t replaceAll(std::string& str, const char* oldValue,const std::string& newValue)
 {
 	size_t pos = 0;
-	size_t len = wcslen(oldValue);
+	size_t len = strlen(oldValue);
 
 	size_t count = 0;
 	while ((pos = str.find(oldValue, pos)) != std::string::npos)
@@ -15657,7 +20442,7 @@ size_t replaceAll(std::wstring& str, const wchar_t* oldValue,const std::wstring&
 	return count;
 }
 
-bool startsWith(const std::wstring& str, const wchar_t* value, size_t stringPos)
+bool startsWith(const std::string& str, const char* value, size_t stringPos)
 {
 	while (*value != 0 && stringPos < str.size())
 	{
@@ -15668,188 +20453,179 @@ bool startsWith(const std::wstring& str, const wchar_t* value, size_t stringPos)
 	return *value == 0;
 }
 
-bool isAbsolutePath(const std::wstring& path)
-{
-#ifdef _WIN32
-	return path.size() > 2 && (path[1] == ':' || (path[0] == '\\' && path[1] == '\\'));
-#else
-	return path.size() >= 1 && path[0] == '/';
-#endif
-}
-
 // file: Main/CommandLineInterface.h
 
-int runFromCommandLine(const StringList& arguments, ArmipsArguments settings = {});
+
+int runFromCommandLine(const std::vector<std::string>& arguments, ArmipsArguments settings = {});
 
 // file: Main/CommandLineInterface.cpp
 
-static void printUsage(std::wstring executableName)
+
+static void printUsage(const std::string &executableName)
 {
-	Logger::printLine(L"armips assembler v%d.%d.%d (%s %s) by Kingcom",
+	Logger::printLine("armips assembler v%d.%d.%d (%s %s) by Kingcom",
 		ARMIPS_VERSION_MAJOR, ARMIPS_VERSION_MINOR, ARMIPS_VERSION_REVISION, __DATE__, __TIME__);
-	Logger::printLine(L"Usage: %s [optional parameters] <FILE>", executableName);
-	Logger::printLine(L"");
-	Logger::printLine(L"Optional parameters:");
-	Logger::printLine(L" -temp <TEMP>              Output temporary assembly data to <TEMP> file");
-	Logger::printLine(L" -sym  <SYM>               Output symbol data in the sym format to <SYM> file");
-	Logger::printLine(L" -sym2 <SYM2>              Output symbol data in the sym2 format to <SYM2> file");
-	Logger::printLine(L" -root <ROOT>              Use <ROOT> as working directory during execution");
-	Logger::printLine(L" -equ  <NAME> <VAL>        Equivalent to \'<NAME> equ <VAL>\' in code");
-	Logger::printLine(L" -strequ <NAME> <VAL>      Equivalent to \'<NAME> equ \"<VAL>\"\' in code");
-	Logger::printLine(L" -definelabel <NAME> <VAL> Equivalent to \'.definelabel <NAME>, <VAL>\' in code");
-	Logger::printLine(L" -erroronwarning           Treat all warnings like errors");
-	Logger::printLine(L"");
-	Logger::printLine(L"File arguments:");
-	Logger::printLine(L" <FILE>                    Main assembly code file");
+	Logger::printLine("Usage: %s [optional parameters] <FILE>", executableName);
+	Logger::printLine("");
+	Logger::printLine("Optional parameters:");
+	Logger::printLine(" -temp <TEMP>              Output temporary assembly data to <TEMP> file");
+	Logger::printLine(" -sym  <SYM>               Output symbol data in the sym format to <SYM> file");
+	Logger::printLine(" -sym2 <SYM2>              Output symbol data in the sym2 format to <SYM2> file");
+	Logger::printLine(" -root <ROOT>              Use <ROOT> as working directory during execution");
+	Logger::printLine(" -equ  <NAME> <VAL>        Equivalent to \'<NAME> equ <VAL>\' in code");
+	Logger::printLine(" -strequ <NAME> <VAL>      Equivalent to \'<NAME> equ \"<VAL>\"\' in code");
+	Logger::printLine(" -definelabel <NAME> <VAL> Equivalent to \'.definelabel <NAME>, <VAL>\' in code");
+	Logger::printLine(" -erroronwarning           Treat all warnings like errors");
+	Logger::printLine(" -stat                     Show area usage statistics");
+	Logger::printLine("");
+	Logger::printLine("File arguments:");
+	Logger::printLine(" <FILE>                    Main assembly code file");
 }
 
-static bool parseArguments(const StringList& arguments, ArmipsArguments& settings)
+static bool parseArguments(const std::vector<std::string>& arguments, ArmipsArguments& settings)
 {
 	size_t argpos = 1;
 	bool readflags = true;
 	while (argpos < arguments.size())
 	{
-		if (readflags && arguments[argpos][0] == L'-')
+		if (readflags && arguments[argpos][0] == '-')
 		{
-			if (arguments[argpos] == L"--")
+			if (arguments[argpos] == "--")
 			{
 				readflags = false;
 				argpos += 1;
 			}
-			else if (arguments[argpos] == L"-temp" && argpos + 1 < arguments.size())
+			else if (arguments[argpos] == "-temp" && argpos + 1 < arguments.size())
 			{
 				settings.tempFileName = arguments[argpos + 1];
 				argpos += 2;
 			}
-			else if (arguments[argpos] == L"-sym" && argpos + 1 < arguments.size())
+			else if (arguments[argpos] == "-sym" && argpos + 1 < arguments.size())
 			{
 				settings.symFileName = arguments[argpos + 1];
 				settings.symFileVersion = 1;
 				argpos += 2;
 			}
-			else if (arguments[argpos] == L"-sym2" && argpos + 1 < arguments.size())
+			else if (arguments[argpos] == "-sym2" && argpos + 1 < arguments.size())
 			{
 				settings.symFileName = arguments[argpos + 1];
 				settings.symFileVersion = 2;
 				argpos += 2;
 			}
-			else if (arguments[argpos] == L"-erroronwarning")
+			else if (arguments[argpos] == "-erroronwarning")
 			{
 				settings.errorOnWarning = true;
 				argpos += 1;
 			}
-			else if (arguments[argpos] == L"-equ" && argpos + 2 < arguments.size())
+			else if (arguments[argpos] == "-stat")
 			{
-				EquationDefinition def;
-
-				def.name = arguments[argpos+1];
-				std::transform(def.name.begin(), def.name.end(), def.name.begin(), ::towlower);
-
-				if (!checkValidLabelName(def.name))
-				{
-					Logger::printError(Logger::Error, L"Invalid equation name \"%s\"", def.name);
-					return false;
-				}
-
-				auto it = std::find_if(settings.equList.begin(), settings.equList.end(),
-						[&def](EquationDefinition x) -> bool {return def.name == x.name;});
-				if(it != settings.equList.end())
-				{
-					Logger::printError(Logger::Error, L"Equation name \"%s\" already defined", def.name);
-					return false;
-				}
-
-				def.value = arguments[argpos + 2];
-				settings.equList.push_back(def);
-				argpos += 3;
-			}
-			else if (arguments[argpos] == L"-strequ" && argpos + 2 < arguments.size())
-			{
-				EquationDefinition def;
-
-				def.name = arguments[argpos+1];
-				std::transform(def.name.begin(), def.name.end(), def.name.begin(), ::towlower);
-
-				if (!checkValidLabelName(def.name))
-				{
-					Logger::printError(Logger::Error, L"Invalid equation name \"%s\"", def.name);
-					return false;
-				}
-
-				auto it = std::find_if(settings.equList.begin(), settings.equList.end(),
-						[&def](EquationDefinition x) -> bool {return def.name == x.name;});
-				if(it != settings.equList.end())
-				{
-					Logger::printError(Logger::Error, L"Equation name \"%s\" already defined", def.name);
-					return false;
-				}
-
-				def.value = formatString(L"\"%s\"", arguments[argpos + 2]);
-				settings.equList.push_back(def);
-				argpos += 3;
-			}
-			else if (arguments[argpos] == L"-time")
-			{
-				Logger::printError(Logger::Warning, L"-time flag is deprecated");
+				settings.showStats = true;
 				argpos += 1;
 			}
-			else if (arguments[argpos] == L"-root" && argpos + 1 < arguments.size())
+			else if (arguments[argpos] == "-equ" && argpos + 2 < arguments.size())
 			{
-				if(!changeDirectory(arguments[argpos + 1]))
+				Identifier name = Identifier(arguments[argpos+1]);
+
+				if (!checkValidLabelName(name))
 				{
-					Logger::printError(Logger::Error, L"Could not open directory \"%s\"", arguments[argpos + 1]);
+					Logger::printError(Logger::Error, "Invalid equation name \"%s\"", name);
+					return false;
+				}
+
+				auto it = std::find_if(settings.equList.begin(), settings.equList.end(),
+						[&name](const EquationDefinition& x) -> bool {return name == x.name;});
+				if(it != settings.equList.end())
+				{
+					Logger::printError(Logger::Error, "Equation name \"%s\" already defined", name);
+					return false;
+				}
+
+				const std::string &value = arguments[argpos + 2];
+				settings.equList.emplace_back(EquationDefinition{name, value});
+				argpos += 3;
+			}
+			else if (arguments[argpos] == "-strequ" && argpos + 2 < arguments.size())
+			{
+				Identifier name = Identifier(arguments[argpos+1]);
+
+				if (!checkValidLabelName(name))
+				{
+					Logger::printError(Logger::Error, "Invalid equation name \"%s\"", name);
+					return false;
+				}
+
+				auto it = std::find_if(settings.equList.begin(), settings.equList.end(),
+						[&name](const EquationDefinition& x) -> bool {return name == x.name;});
+				if(it != settings.equList.end())
+				{
+					Logger::printError(Logger::Error, "Equation name \"%s\" already defined", name);
+					return false;
+				}
+
+				std::string value = tfm::format("\"%s\"", arguments[argpos + 2]);
+				settings.equList.emplace_back(EquationDefinition{name, value});
+				argpos += 3;
+			}
+			else if (arguments[argpos] == "-time")
+			{
+				Logger::printError(Logger::Warning, "-time flag is deprecated");
+				argpos += 1;
+			}
+			else if (arguments[argpos] == "-root" && argpos + 1 < arguments.size())
+			{
+				std::error_code errorCode;
+				fs::current_path(arguments[argpos + 1], errorCode);
+
+				if (errorCode)
+				{
+					Logger::printError(Logger::Error, "Could not open directory \"%s\"", arguments[argpos + 1]);
 					return false;
 				}
 				argpos += 2;
 			}
-			else if (arguments[argpos] == L"-definelabel" && argpos + 2 < arguments.size())
+			else if (arguments[argpos] == "-definelabel" && argpos + 2 < arguments.size())
 			{
-				LabelDefinition def;
+				Identifier name = Identifier(arguments[argpos + 1]);
 
-				def.originalName = arguments[argpos + 1];
-				def.name = def.originalName;
-				std::transform(def.name.begin(), def.name.end(), def.name.begin(), ::towlower);
-
-				if (!checkValidLabelName(def.name))
+				if (!checkValidLabelName(name))
 				{
-					Logger::printError(Logger::Error, L"Invalid label name \"%s\"", def.name);
+					Logger::printError(Logger::Error, "Invalid label name \"%s\"", name);
 					return false;
 				}
 
 				auto it = std::find_if(settings.labels.begin(), settings.labels.end(),
-						[&def](LabelDefinition x) -> bool {return def.name == x.name;});
+						[&name](const LabelDefinition& x) -> bool {return name == x.name;});
 				if(it != settings.labels.end())
 				{
-					Logger::printError(Logger::Error, L"Label name \"%s\" already defined", def.name);
+					Logger::printError(Logger::Error, "Label name \"%s\" already defined", name);
 					return false;
 				}
 
 				int64_t value;
 				if (!stringToInt(arguments[argpos + 2], 0, arguments[argpos + 2].size(), value))
 				{
-					Logger::printError(Logger::Error, L"Invalid label value \"%s\"", arguments[argpos + 2]);
+					Logger::printError(Logger::Error, "Invalid label value \"%s\"", arguments[argpos + 2]);
 					return false;
 				}
-				def.value = value;
 
-				settings.labels.push_back(def);
+				settings.labels.emplace_back(LabelDefinition{name, value});
 				argpos += 3;
 			}
 			else {
-				Logger::printError(Logger::Error, L"Invalid command line argument \"%s\"\n", arguments[argpos]);
+				Logger::printError(Logger::Error, "Invalid command line argument \"%s\"\n", arguments[argpos]);
 				printUsage(arguments[0]);
 				return false;
 			}
 		}
 		else {
 			// only allow one input filename
-			if (settings.inputFileName == L"")
+			if (settings.inputFileName.empty())
 			{
 				settings.inputFileName = arguments[argpos];
 				argpos++;
 			}
 			else {
-				Logger::printError(Logger::Error, L"Multiple input assembly files specified\n");
+				Logger::printError(Logger::Error, "Multiple input assembly files specified\n");
 				printUsage(arguments[0]);
 				return false;
 			}
@@ -15857,41 +20633,41 @@ static bool parseArguments(const StringList& arguments, ArmipsArguments& setting
 	}
 
 	// ensure input file was specified
-	if (settings.inputFileName == L"")
+	if (settings.inputFileName.empty())
 	{
 		if (arguments.size() > 1)
-			Logger::printError(Logger::Error, L"Missing input assembly file\n");
+			Logger::printError(Logger::Error, "Missing input assembly file\n");
 
 		printUsage(arguments[0]);
 		return false;
 	}
 
 	// turn input filename into an absolute path
-	if (settings.useAbsoluteFileNames && isAbsolutePath(settings.inputFileName) == false)
-		settings.inputFileName = formatString(L"%s/%s", getCurrentDirectory(), settings.inputFileName);
+	if (settings.useAbsoluteFileNames)
+		settings.inputFileName = fs::absolute(settings.inputFileName).lexically_normal();
 
-	if (fileExists(settings.inputFileName) == false)
+	if (!fs::exists(settings.inputFileName))
 	{
-		Logger::printError(Logger::Error, L"File \"%s\" not found", settings.inputFileName);
+		Logger::printError(Logger::Error, "File \"%s\" not found", settings.inputFileName.u8string());
 		return false;
 	}
 	return true;
 }
 
-int runFromCommandLine(const StringList& arguments, ArmipsArguments settings)
+int runFromCommandLine(const std::vector<std::string>& arguments, ArmipsArguments settings)
 {
-	if (parseArguments(arguments, settings) == false)
+	if (!parseArguments(arguments, settings))
 	{
 		if (arguments.size() > 1 && !settings.silent)
-			Logger::printLine(L"Cannot parse arguments; aborting.");
+			Logger::printLine("Cannot parse arguments; aborting.");
 
 		return 1;
 	}
 
-	if (runArmips(settings) == false)
+	if (!runArmips(settings))
 	{
 		if (!settings.silent)
-			Logger::printLine(L"Aborting.");
+			Logger::printLine("Aborting.");
 
 		return 1;
 	}
@@ -15900,21 +20676,24 @@ int runFromCommandLine(const StringList& arguments, ArmipsArguments settings)
 }
 
 // file: Core/ELF/ElfFile.cpp
-#include <vector>
-#include <algorithm>
 
+
+#include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <vector>
 
 static bool stringEqualInsensitive(const std::string& a, const std::string& b)
 {
 	if (a.size() != b.size())
 		return false;
-	auto compare = [](char c1, char c2)
- 	{
- 		return std::tolower(c1) == std::tolower(c2);
- 	};
 
-   return std::equal(a.begin(), a.end(), b.begin(), compare);
+	auto compare = [](char c1, char c2)
+	{
+		return std::tolower(c1) == std::tolower(c2);
+	};
+
+	return std::equal(a.begin(), a.end(), b.begin(), compare);
 }
 
 bool compareSection(ElfSection* a, ElfSection* b)
@@ -15933,7 +20712,7 @@ void ElfSection::setOwner(ElfSegment* segment)
 	owner = segment;
 }
 
-void ElfSection::writeHeader(ByteArray& data, int pos, Endianness endianness)
+void ElfSection::writeHeader(ByteArray& data, size_t pos, Endianness endianness)
 {
 	data.replaceDoubleWord(pos + 0x00, header.sh_name, endianness);
 	data.replaceDoubleWord(pos + 0x04, header.sh_type, endianness);
@@ -15969,10 +20748,9 @@ void ElfSection::setOffsetBase(int base)
 	header.sh_offset += base;
 }
 
-ElfSegment::ElfSegment(Elf32_Phdr header, ByteArray& segmentData): header(header)
+ElfSegment::ElfSegment(Elf32_Phdr header, ByteArray& segmentData)
+	: header(header), data(segmentData), paddrSection(nullptr)
 {
-	data = segmentData;
-	paddrSection = nullptr;
 }
 
 bool ElfSegment::isSectionPartOf(ElfSection* section)
@@ -15993,7 +20771,7 @@ bool ElfSegment::isSectionPartOf(ElfSection* section)
 	// the start is inside the section and the size is not 0, so the end should be in here too
 	if (sectionEnd > segmentEnd)
 	{
-		Logger::printError(Logger::Error,L"Section partially contained in segment");
+		Logger::printError(Logger::Error, "Section partially contained in segment");
 		return false;
 	}
 
@@ -16026,8 +20804,8 @@ void ElfSegment::writeData(ByteArray& output)
 		return;
 	}
 
-	// align segment to alignment of first section
-	int align = std::max<int>(sections[0]->getAlignment(),16);
+	// align segment to alignment of first section (minimum 1, i.e. no forced alignment)
+	int align = std::max<int>(sections[0]->getAlignment(),1);
 	output.alignSize(align);
 
 	header.p_offset = (Elf32_Off) output.size();
@@ -16044,7 +20822,7 @@ void ElfSegment::writeData(ByteArray& output)
 	output.append(data);
 }
 
-void ElfSegment::writeHeader(ByteArray& data, int pos, Endianness endianness)
+void ElfSegment::writeHeader(ByteArray& data, size_t pos, Endianness endianness)
 {
 	data.replaceDoubleWord(pos + 0x00, header.p_type, endianness);
 	data.replaceDoubleWord(pos + 0x04, header.p_offset, endianness);
@@ -16066,7 +20844,7 @@ int ElfSegment::findSection(const std::string& name)
 	for (size_t i = 0; i < sections.size(); i++)
 	{
 		if (stringEqualInsensitive(name,sections[i]->getName()))
-			return i;
+			return (int)i;
 	}
 
 	return -1;
@@ -16175,7 +20953,7 @@ int ElfFile::findSegmentlessSection(const std::string& name)
 	for (size_t i = 0; i < segmentlessSections.size(); i++)
 	{
 		if (stringEqualInsensitive(name,segmentlessSections[i]->getName()))
-			return i;
+			return (int)i;
 	}
 
 	return -1;
@@ -16200,7 +20978,7 @@ void ElfFile::loadElfHeader()
 	fileHeader.e_shstrndx = fileData.getWord(0x32, endianness);
 }
 
-void ElfFile::writeHeader(ByteArray& data, int pos, Endianness endianness)
+void ElfFile::writeHeader(ByteArray& data, size_t pos, Endianness endianness)
 {
 	memcpy(&fileData[0], fileHeader.e_ident, sizeof(fileHeader.e_ident));
 	data.replaceWord(pos + 0x10, fileHeader.e_type, endianness);
@@ -16218,7 +20996,7 @@ void ElfFile::writeHeader(ByteArray& data, int pos, Endianness endianness)
 	data.replaceWord(pos + 0x32, fileHeader.e_shstrndx, endianness);
 }
 
-void ElfFile::loadProgramHeader(Elf32_Phdr& header, ByteArray& data, int pos)
+void ElfFile::loadProgramHeader(Elf32_Phdr& header, ByteArray& data, size_t pos)
 {
 	Endianness endianness = getEndianness();
 	header.p_type   = data.getDoubleWord(pos + 0x00, endianness);
@@ -16231,7 +21009,7 @@ void ElfFile::loadProgramHeader(Elf32_Phdr& header, ByteArray& data, int pos)
 	header.p_align  = data.getDoubleWord(pos + 0x1C, endianness);
 }
 
-void ElfFile::loadSectionHeader(Elf32_Shdr& header, ByteArray& data, int pos)
+void ElfFile::loadSectionHeader(Elf32_Shdr& header, ByteArray& data, size_t pos)
 {
 	Endianness endianness = getEndianness();
 	header.sh_name      = data.getDoubleWord(pos + 0x00, endianness);
@@ -16246,7 +21024,7 @@ void ElfFile::loadSectionHeader(Elf32_Shdr& header, ByteArray& data, int pos)
 	header.sh_entsize   = data.getDoubleWord(pos + 0x24, endianness);
 }
 
-bool ElfFile::load(const std::wstring& fileName, bool sort)
+bool ElfFile::load(const fs::path& fileName, bool sort)
 {
 	ByteArray data = ByteArray::fromFile(fileName);
 	if (data.size() == 0)
@@ -16265,7 +21043,7 @@ bool ElfFile::load(ByteArray& data, bool sort)
 	// load segments
 	for (size_t i = 0; i < fileHeader.e_phnum; i++)
 	{
-		int pos = fileHeader.e_phoff+i*fileHeader.e_phentsize;
+		size_t pos = fileHeader.e_phoff+i*fileHeader.e_phentsize;
 
 		Elf32_Phdr sectionHeader;
 		loadProgramHeader(sectionHeader, fileData, pos);
@@ -16278,7 +21056,7 @@ bool ElfFile::load(ByteArray& data, bool sort)
 	// load sections and assign them to segments
 	for (int i = 0; i < fileHeader.e_shnum; i++)
 	{
-		int pos = fileHeader.e_shoff+i*fileHeader.e_shentsize;
+		size_t pos = fileHeader.e_shoff+i*fileHeader.e_shentsize;
 
 		Elf32_Shdr sectionHeader;
 		loadSectionHeader(sectionHeader, fileData, pos);
@@ -16340,7 +21118,7 @@ bool ElfFile::load(ByteArray& data, bool sort)
 	return true;
 }
 
-void ElfFile::save(const std::wstring&fileName)
+void ElfFile::save(const fs::path& fileName)
 {
 	fileData.clear();
 
@@ -16381,13 +21159,13 @@ void ElfFile::save(const std::wstring&fileName)
 	writeHeader(fileData, 0, endianness);
 	for (size_t i = 0; i < segments.size(); i++)
 	{
-		int pos = fileHeader.e_phoff+i*fileHeader.e_phentsize;
+		size_t pos = fileHeader.e_phoff+i*fileHeader.e_phentsize;
 		segments[i]->writeHeader(fileData, pos, endianness);
 	}
 
 	for (size_t i = 0; i < sections.size(); i++)
 	{
-		int pos = fileHeader.e_shoff+i*fileHeader.e_shentsize;
+		size_t pos = fileHeader.e_shoff+i*fileHeader.e_shentsize;
 		sections[i]->writeHeader(fileData, pos, endianness);
 	}
 
@@ -16408,7 +21186,7 @@ bool ElfFile::getSymbol(Elf32_Sym& symbol, size_t index)
 		return false;
 
 	ByteArray &data = symTab->getData();
-	int pos = index*sizeof(Elf32_Sym);
+	size_t pos = index*sizeof(Elf32_Sym);
 	Endianness endianness = getEndianness();
 	symbol.st_name  = data.getDoubleWord(pos + 0x00, endianness);
 	symbol.st_value = data.getDoubleWord(pos + 0x04, endianness);
@@ -16430,6 +21208,9 @@ const char* ElfFile::getStrTableString(size_t pos)
 
 // file: Core/ELF/ElfRelocator.cpp
 
+
+#include <cstring>
+
 struct ArFileHeader
 {
 	char fileName[16];
@@ -16443,11 +21224,11 @@ struct ArFileHeader
 
 struct ArFileEntry
 {
-	std::wstring name;
+	std::string name;
 	ByteArray data;
 };
 
-std::vector<ArFileEntry> loadArArchive(const std::wstring& inputName)
+std::vector<ArFileEntry> loadArArchive(const fs::path& inputName)
 {
 	ByteArray input = ByteArray::fromFile(inputName);
 	std::vector<ArFileEntry> result;
@@ -16458,7 +21239,7 @@ std::vector<ArFileEntry> loadArArchive(const std::wstring& inputName)
 			return result;
 
 		ArFileEntry entry;
-		entry.name = getFileNameFromPath(inputName);
+		entry.name = inputName.filename().u8string();
 		entry.data = input;
 		result.push_back(entry);
 		return result;
@@ -16495,14 +21276,14 @@ std::vector<ArFileEntry> loadArArchive(const std::wstring& inputName)
 					if (i > 0 && fileName[i-1] == '/')
 						i--;
 					fileName[i] = 0;
-					break;;
+					break;
 				}
 
 				fileName[i] = header->fileName[i];
 			}
 
 			ArFileEntry entry;
-			entry.name = convertUtf8ToWString(fileName);
+			entry.name = fileName;
 			entry.data = input.mid(pos,size);
 			result.push_back(entry);
 		}
@@ -16515,19 +21296,19 @@ std::vector<ArFileEntry> loadArArchive(const std::wstring& inputName)
 	return result;
 }
 
-bool ElfRelocator::init(const std::wstring& inputName)
+bool ElfRelocator::init(const fs::path& inputName)
 {
-	relocator = Arch->getElfRelocator();
+	relocator = Architecture::current().getElfRelocator();
 	if (relocator == nullptr)
 	{
-		Logger::printError(Logger::Error,L"Object importing not supported for this architecture");
+		Logger::printError(Logger::Error, "Object importing not supported for this architecture");
 		return false;
 	}
 
 	auto inputFiles = loadArArchive(inputName);
 	if (inputFiles.size() == 0)
 	{
-		Logger::printError(Logger::Error,L"Could not load library");
+		Logger::printError(Logger::Error, "Could not load library");
 		return false;
 	}
 
@@ -16536,33 +21317,33 @@ bool ElfRelocator::init(const std::wstring& inputName)
 		ElfRelocatorFile file;
 
 		ElfFile* elf = new ElfFile();
-		if (elf->load(entry.data,false) == false)
+		if (!elf->load(entry.data,false))
 		{
-			Logger::printError(Logger::Error,L"Could not load object file %s",entry.name);
+			Logger::printError(Logger::Error, "Could not load object file %s",entry.name);
 			return false;
 		}
 
 		if (elf->getType() != ET_REL)
 		{
-			Logger::printError(Logger::Error,L"Unexpected ELF type %d in object file %s",elf->getType(),entry.name);
+			Logger::printError(Logger::Error, "Unexpected ELF type %d in object file %s",elf->getType(),entry.name);
 			return false;
 		}
 
 		if (elf->getMachine() != relocator->expectedMachine())
 		{
-			Logger::printError(Logger::Error,L"Unexpected ELF machine %d in object file %s",elf->getMachine(),entry.name);
+			Logger::printError(Logger::Error, "Unexpected ELF machine %d in object file %s",elf->getMachine(),entry.name);
 			return false;
 		}
 
-		if (elf->getEndianness() != Arch->getEndianness())
+		if (elf->getEndianness() != Architecture::current().getEndianness())
 		{
-			Logger::printError(Logger::Error,L"Incorrect endianness in object file %s",entry.name);
+			Logger::printError(Logger::Error, "Incorrect endianness in object file %s",entry.name);
 			return false;
 		}
 
 		if (elf->getSegmentCount() != 0)
 		{
-			Logger::printError(Logger::Error,L"Unexpected segment count %d in object file %s",elf->getSegmentCount(),entry.name);
+			Logger::printError(Logger::Error, "Unexpected segment count %d in object file %s",elf->getSegmentCount(),entry.name);
 			return false;
 		}
 
@@ -16586,7 +21367,7 @@ bool ElfRelocator::init(const std::wstring& inputName)
 				for (size_t k = 0; k < elf->getSegmentlessSectionCount(); k++)
 				{
 					ElfSection* relSection = elf->getSegmentlessSection(k);
-					if (relSection->getType() != SHT_REL)
+					if (relSection->getType() != SHT_REL && relSection->getType() != SHT_RELA)
 						continue;
 					if (relSection->getInfo() != s)
 						continue;
@@ -16619,11 +21400,11 @@ bool ElfRelocator::init(const std::wstring& inputName)
 			Elf32_Sym symbol;
 			elf->getSymbol(symbol, i);
 
-			if (ELF32_ST_BIND(symbol.st_info) == STB_GLOBAL && symbol.st_shndx != 0)
+			if ((ELF32_ST_BIND(symbol.st_info) == STB_GLOBAL || ELF32_ST_BIND(symbol.st_info) == STB_WEAK) && symbol.st_shndx != 0)
 			{
 				ElfRelocatorSymbol symEntry;
 				symEntry.type = ELF32_ST_TYPE(symbol.st_info);
-				symEntry.name = convertUtf8ToWString(elf->getStrTableString(symbol.st_name));
+				symEntry.name = elf->getStrTableString(symbol.st_name);
 				symEntry.relativeAddress = symbol.st_value;
 				symEntry.section = symbol.st_shndx;
 				symEntry.size = symbol.st_size;
@@ -16652,20 +21433,20 @@ bool ElfRelocator::exportSymbols()
 			if (sym.label != nullptr)
 				continue;
 
-			std::wstring lowered = sym.name;
-			std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::towlower);
+			std::string lowered = sym.name;
+			std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
 
-			sym.label = Global.symbolTable.getLabel(lowered,-1,-1);
+			sym.label = Global.symbolTable.getLabel(Identifier(lowered),-1,-1);
 			if (sym.label == nullptr)
 			{
-				Logger::printError(Logger::Error,L"Invalid label name \"%s\"",sym.name);
+				Logger::printError(Logger::Error, "Invalid label name \"%s\"",sym.name);
 				error = true;
 				continue;
 			}
 
 			if (sym.label->isDefined())
 			{
-				Logger::printError(Logger::Error,L"Label \"%s\" already defined",sym.name);
+				Logger::printError(Logger::Error, "Label \"%s\" already defined",sym.name);
 				error = true;
 				continue;
 			}
@@ -16681,26 +21462,30 @@ bool ElfRelocator::exportSymbols()
 
 			sym.label->setValue(0);
 			sym.label->setDefined(true);
-			sym.label->setOriginalName(sym.name);
+			sym.label->setOriginalName(Identifier(sym.name));
 		}
 	}
 
 	return !error;
 }
 
-std::unique_ptr<CAssemblerCommand> ElfRelocator::generateCtor(const std::wstring& ctorName)
+std::unique_ptr<CAssemblerCommand> ElfRelocator::generateCtor(const Identifier& ctorName)
 {
 	std::unique_ptr<CAssemblerCommand> content = relocator->generateCtorStub(ctors);
 
-	auto func = ::make_unique<CDirectiveFunction>(ctorName,ctorName);
+	auto func = std::make_unique<CDirectiveFunction>(ctorName, ctorName);
 	func->setContent(std::move(content));
 	return func;
 }
 
-void ElfRelocator::loadRelocation(Elf32_Rel& rel, ByteArray& data, int offset, Endianness endianness)
+void ElfRelocator::loadRelocation(Elf32_Rela& rela, bool addend, ByteArray& data, int offset, Endianness endianness)
 {
-	rel.r_offset = data.getDoubleWord(offset + 0x00, endianness);
-	rel.r_info   = data.getDoubleWord(offset + 0x04, endianness);
+	rela.r_offset = data.getDoubleWord(offset + 0x00, endianness);
+	rela.r_info   = data.getDoubleWord(offset + 0x04, endianness);
+	if (addend)
+		rela.r_addend = data.getDoubleWord(offset + 0x08, endianness);
+	else
+		rela.r_addend = 0;
 }
 
 bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddress)
@@ -16716,14 +21501,21 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 		size_t index = entry.index;
 		int size = section->getSize();
 
-		while (relocationAddress % section->getAlignment())
-			relocationAddress++;
+		if (section->getType() == SHT_NOBITS)
+		{
+			// these sections should not be relocated...
+			relocationOffsets[index] = section->getAddress();
 
-		if (entry.label != nullptr)
-			entry.label->setValue(relocationAddress);
+		} else {
+			while (relocationAddress % section->getAlignment())
+				relocationAddress++;
 
-		relocationOffsets[index] = relocationAddress;
-		relocationAddress += size;
+			if (entry.label != nullptr)
+				entry.label->setValue(relocationAddress);
+
+			relocationOffsets[index] = relocationAddress;
+			relocationAddress += size;
+		}
 	}
 
 	size_t dataStart = outputData.size();
@@ -16748,20 +21540,23 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 		ElfSection* relSection = entry.relSection;
 		if (relSection != nullptr)
 		{
-			std::vector<RelocationAction> relocationActions;
-			for (unsigned int relOffset = 0; relOffset < relSection->getSize(); relOffset += sizeof(Elf32_Rel))
-			{
-				Elf32_Rel rel;
-				loadRelocation(rel, relSection->getData(), relOffset, elf->getEndianness());
-				int pos = rel.r_offset;
+			bool isRela = relSection->getType() == SHT_RELA;
+			int structSize = isRela ? sizeof(Elf32_Rela) : sizeof(Elf32_Rel);
 
-				if (relocator->isDummyRelocationType(rel.getType()))
+			std::vector<RelocationAction> relocationActions;
+			for (unsigned int relOffset = 0; relOffset < relSection->getSize(); relOffset += structSize)
+			{
+				Elf32_Rela rela;
+				loadRelocation(rela, isRela, relSection->getData(), relOffset, elf->getEndianness());
+				int pos = rela.r_offset;
+
+				if (relocator->isDummyRelocationType(rela.getType()))
 					continue;
 
-				int symNum = rel.getSymbolNum();
+				int symNum = rela.getSymbolNum();
 				if (symNum <= 0)
 				{
-					Logger::queueError(Logger::Warning,L"Invalid symbol num %06X",symNum);
+					Logger::queueError(Logger::Warning, "Invalid symbol num %06X",symNum);
 					error = true;
 					continue;
 				}
@@ -16773,6 +21568,7 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 				RelocationData relData;
 				relData.opcode = sectionData.getDoubleWord(pos, elf->getEndianness());
 				relData.opcodeOffset = pos+relocationOffsets[index];
+				relData.addend = rela.r_addend;
 				relocator->setSymbolAddress(relData,sym.st_value,sym.st_info & 0xF);
 
 				// externs?
@@ -16780,23 +21576,23 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 				{
 					if (sym.st_name == 0)
 					{
-						Logger::queueError(Logger::Error, L"Symbol without a name");
+						Logger::queueError(Logger::Error, "Symbol without a name");
 						error = true;
 						continue;
 					}
 
-					std::wstring symName = toWLowercase(elf->getStrTableString(sym.st_name));
+					std::string symName = toLowercase(elf->getStrTableString(sym.st_name));
 
-					std::shared_ptr<Label> label = Global.symbolTable.getLabel(symName,-1,-1);
+					std::shared_ptr<Label> label = Global.symbolTable.getLabel(Identifier(symName),-1,-1);
 					if (label == nullptr)
 					{
-						Logger::queueError(Logger::Error,L"Invalid external symbol %s",symName);
+						Logger::queueError(Logger::Error, "Invalid external symbol %s",symName);
 						error = true;
 						continue;
 					}
-					if (label->isDefined() == false)
+					if (!label->isDefined())
 					{
-						Logger::queueError(Logger::Error,L"Undefined external symbol %s in file %s",symName,file.name);
+						Logger::queueError(Logger::Error, "Undefined external symbol %s in file %s",symName,file.name);
 						error = true;
 						continue;
 					}
@@ -16808,10 +21604,10 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 					relData.relocationBase = relocationOffsets[symSection]+relData.symbolAddress;
 				}
 
-				std::vector<std::wstring> errors;
-				if (!relocator->relocateOpcode(rel.getType(),relData, relocationActions, errors))
+				std::vector<std::string> errors;
+				if (!relocator->relocateOpcode(rela.getType(), relData, relocationActions, errors))
 				{
-					for (const std::wstring& error : errors)
+					for (const std::string& error : errors)
 					{
 						Logger::queueError(Logger::Error, error);
 					}
@@ -16821,10 +21617,10 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 			}
 
 			// finish any dangling relocations
-			std::vector<std::wstring> errors;
+			std::vector<std::string> errors;
 			if (!relocator->finish(relocationActions, errors))
 			{
-				for (const std::wstring& error : errors)
+				for (const std::string& error : errors)
 				{
 					Logger::queueError(Logger::Error, error);
 				}
@@ -16890,7 +21686,7 @@ bool ElfRelocator::relocate(int64_t& memoryAddress)
 
 	for (ElfRelocatorFile& file: files)
 	{
-		if (relocateFile(file,memoryAddress) == false)
+		if (!relocateFile(file,memoryAddress))
 			error = true;
 	}
 
@@ -16908,7 +21704,7 @@ void ElfRelocator::writeSymbols(SymbolData& symData) const
 	{
 		for (const ElfRelocatorSymbol& sym: file.symbols)
 		{
-			symData.addLabel(sym.relocatedAddress,sym.name);
+			symData.addLabel(sym.relocatedAddress, sym.name);
 
 			switch (sym.type)
 			{
@@ -16924,63 +21720,316 @@ void ElfRelocator::writeSymbols(SymbolData& symData) const
 	}
 }
 
-// file: Core/Assembler.cpp
-#include <thread>
-
-void AddFileName(const std::wstring& FileName)
+std::unique_ptr<CAssemblerCommand> IElfRelocator::generateCtorStub(std::vector<ElfRelocatorCtor> &ctors)
 {
-	Global.FileInfo.FileNum = (int) Global.FileInfo.FileList.size();
-	Global.FileInfo.FileList.push_back(FileName);
-	Global.FileInfo.LineNumber = 0;
+	return nullptr;
 }
+
+// file: Core/Allocations.cpp
+
+
+std::map<Allocations::Key, Allocations::Usage> Allocations::allocations;
+std::map<Allocations::Key, int64_t> Allocations::pools;
+std::multimap<Allocations::Key, Allocations::SubArea> Allocations::subAreas;
+
+// Are we keeping existing positions this round?  Start with no, since we have none.
+bool Allocations::keepPositions = false;
+// Should we keep positions next time?  This is set to false on allocation failure.
+bool Allocations::nextKeepPositions = true;
+// Did we adjust any positions to keep the old?
+bool Allocations::keptPositions = false;
+
+void Allocations::clear()
+{
+	allocations.clear();
+	keepPositions = false;
+	nextKeepPositions = true;
+	keptPositions = false;
+}
+
+void Allocations::setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared)
+{
+	Key key{ fileID, position };
+	allocations[key] = Usage{ space, usage, usesFill, shared };
+}
+
+void Allocations::forgetArea(int64_t fileID, int64_t position, int64_t space)
+{
+	Key key{ fileID, position };
+	auto it = allocations.find(key);
+	if (it != allocations.end() && it->second.space == space)
+		allocations.erase(it);
+
+	subAreas.erase(key);
+}
+
+void Allocations::setPool(int64_t fileID, int64_t position, int64_t size)
+{
+	Key key{ fileID, position };
+	pools[key] = size;
+}
+
+void Allocations::forgetPool(int64_t fileID, int64_t position, int64_t size)
+{
+	Key key{ fileID, position };
+	auto it = pools.find(key);
+	if (it != pools.end() && it->second == size)
+		pools.erase(it);
+}
+
+bool Allocations::allocateSubArea(int64_t fileID, int64_t& position, int64_t minRange, int64_t maxRange, int64_t size)
+{
+	for (auto it : allocations)
+	{
+		if (it.first.fileID != fileID || !it.second.shared)
+			continue;
+		if (minRange != -1 && it.first.position + it.second.space < minRange)
+			continue;
+		if (maxRange != -1 && it.first.position > maxRange)
+			continue;
+
+		int64_t actualUsage = it.second.usage + getSubAreaUsage(it.first);
+		int64_t possiblePosition = it.first.position + actualUsage;
+		if (minRange != -1 && possiblePosition < minRange)
+			continue;
+		if (maxRange != -1 && possiblePosition > maxRange)
+			continue;
+
+		// Can we use the position it had before?  Nudge up size if so.
+		if (keepPositions && position != -1 && position > possiblePosition)
+		{
+			int64_t offset = position - it.first.position;
+			if (it.second.space >= offset + size && offset != actualUsage)
+			{
+				size += offset - actualUsage;
+				keptPositions = true;
+				// Fall through to reuse the emplace.
+				possiblePosition = position;
+			}
+		}
+
+		if (it.second.space >= actualUsage + size)
+		{
+			position = possiblePosition;
+			subAreas.emplace(it.first, SubArea{ actualUsage, size });
+			return true;
+		}
+	}
+
+	nextKeepPositions = false;
+	return false;
+}
+
+void Allocations::clearSubAreas()
+{
+	subAreas.clear();
+	keepPositions = nextKeepPositions;
+	nextKeepPositions = true;
+	keptPositions = false;
+}
+
+bool Allocations::canTrimSpace()
+{
+	return keptPositions;
+}
+
+int64_t Allocations::getSubAreaUsage(int64_t fileID, int64_t position)
+{
+	Key key{ fileID, position };
+	// For safety, just find the end of the last sub area.
+	int64_t maxExtent = 0;
+	auto range = subAreas.equal_range(key);
+	for (auto it = range.first; it != range.second; ++it)
+	{
+		int64_t extent = it->second.offset + it->second.size;
+		maxExtent = std::max(extent, maxExtent);
+	}
+
+	// Now subtract out the original usage.
+	if (maxExtent <= allocations[key].usage)
+		return 0;
+	return maxExtent - allocations[key].usage;
+}
+
+void Allocations::validateOverlap()
+{
+	// An easy mistake to make is a "subarea" where the parent area fills, and erases the subarea.
+	// Let's detect any sort of area overlap and report a warning.
+	Key lastKey{ -1, -1 };
+	int64_t lastEndPosition = -1;
+	Usage lastUsage{};
+
+	for (auto it : allocations) {
+		if (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition) {
+			// First, the obvious: does the content overlap?
+			if (it.first.position < lastKey.position + lastUsage.usage)
+				Logger::queueError(Logger::Warning, "Content of areas %08llX and %08llx overlap", lastKey.position, it.first.position);
+			// Next question, does the earlier one fill?
+			else if (it.second.usesFill && lastUsage.usesFill)
+				Logger::queueError(Logger::Warning, "Areas %08llX and %08llx overlap and both fill", lastKey.position, it.first.position);
+
+			// If the new area ends before the last, keep it as the last.
+			if (lastEndPosition > it.first.position + it.second.space) {
+				// But update the usage to the max position.
+				int64_t newUsageEnd = it.first.position + it.second.usage + getSubAreaUsage(it.first);
+				lastUsage.usage = newUsageEnd - lastKey.position;
+				continue;
+			}
+		}
+
+		lastKey = it.first;
+		lastUsage = it.second;
+		lastUsage.usage += getSubAreaUsage(lastKey);
+		lastEndPosition = it.first.position + it.second.space;
+	}
+}
+
+AllocationStats Allocations::collectStats()
+{
+	AllocationStats stats{};
+	collectAreaStats(stats);
+	collectPoolStats(stats);
+	return stats;
+}
+
+void Allocations::collectAreaStats(AllocationStats &stats)
+{
+	// Need to work out overlaps.
+	Key lastKey{ -1, -1 };
+	int64_t lastEndPosition = -1;
+	Usage lastUsage{};
+
+	auto applyUsage = [&stats](int64_t position, const Usage &usage)
+	{
+		if (usage.space > stats.largestSize)
+		{
+			stats.largestPosition = position;
+			stats.largestSize = usage.space;
+			stats.largestUsage = usage.usage;
+		}
+
+		if (usage.space - usage.usage > stats.largestFreeSize - stats.largestFreeUsage)
+		{
+			stats.largestFreePosition = position;
+			stats.largestFreeSize = usage.space;
+			stats.largestFreeUsage = usage.usage;
+		}
+
+		// We assume overlaps agree on sharing, hopefully...
+		if (usage.shared && usage.space - usage.usage > stats.sharedFreeSize - stats.sharedFreeUsage)
+		{
+			stats.sharedFreePosition = position;
+			stats.sharedFreeSize = usage.space;
+			stats.sharedFreeUsage = usage.usage;
+		}
+
+		stats.totalSize += usage.space;
+		stats.totalUsage += usage.usage;
+		if (usage.shared)
+		{
+			stats.sharedSize += usage.space;
+			stats.sharedUsage += usage.usage;
+		}
+	};
+
+	for (auto it : allocations)
+	{
+		if (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition)
+		{
+			// Overlap, merge.
+			int64_t lastUsageEnd = lastKey.position + lastUsage.usage;
+			int64_t newUsageEnd = it.first.position + it.second.usage + getSubAreaUsage(it.first);
+
+			if (lastUsageEnd >= it.first.position)
+				lastUsage.usage += newUsageEnd - lastUsageEnd;
+			else
+				lastUsage.usage += it.second.usage + getSubAreaUsage(it.first);
+
+			lastEndPosition = it.first.position + it.second.space;
+			lastUsage.space = lastEndPosition - lastKey.position;
+
+			continue;
+		}
+
+		if (lastKey.position != -1)
+			applyUsage(lastKey.position, lastUsage);
+
+		lastKey = it.first;
+		lastUsage = it.second;
+		lastUsage.usage += getSubAreaUsage(lastKey);
+		lastEndPosition = it.first.position + it.second.space;
+	}
+
+	if (lastKey.position != -1)
+		applyUsage(lastKey.position, lastUsage);
+}
+
+void Allocations::collectPoolStats(AllocationStats &stats)
+{
+	for (auto it : pools)
+	{
+		if (it.second > stats.largestPoolSize)
+		{
+			stats.largestPoolPosition = it.first.position;
+			stats.largestPoolSize = it.second;
+		}
+
+		stats.totalPoolSize += it.second;
+	}
+}
+
+// file: Core/Assembler.cpp
+
+
+#include <thread>
 
 bool encodeAssembly(std::unique_ptr<CAssemblerCommand> content, SymbolData& symData, TempData& tempData)
 {
 	bool Revalidate;
 
-#ifdef ARMIPS_ARM
 	Arm.Pass2();
-#endif
 	Mips.Pass2();
+	SuperH.Pass2();
 
-	int validationPasses = 0;
+	ValidateState validation;
 	do	// loop until everything is constant
 	{
-		Global.validationPasses = validationPasses;
 		Logger::clearQueue();
 		Revalidate = false;
 
-		if (validationPasses >= 100)
+		if (validation.passes >= 100)
 		{
-			Logger::queueError(Logger::Error,L"Stuck in infinite validation loop");
+			Logger::queueError(Logger::Error, "Stuck in infinite validation loop");
 			break;
 		}
 
 		g_fileManager->reset();
+		Allocations::clearSubAreas();
 
 #ifdef _DEBUG
 		if (!Logger::isSilent())
-			printf("Validate %d...\n",validationPasses);
+			printf("Validate %d...\n",validation.passes);
 #endif
 
 		if (Global.memoryMode)
 			g_fileManager->openFile(Global.memoryFile,true);
 
-		Revalidate = content->Validate();
+		Revalidate = content->Validate(validation);
 
-#ifdef ARMIPS_ARM
 		Arm.Revalidate();
-#endif
 		Mips.Revalidate();
+		SuperH.Revalidate();
 
 		if (Global.memoryMode)
 			g_fileManager->closeFile();
 
-		validationPasses++;
-	} while (Revalidate == true);
+		validation.passes++;
+	} while (Revalidate);
+
+	Allocations::validateOverlap();
 
 	Logger::printQueue();
-	if (Logger::hasError() == true)
+	if (Logger::hasError())
 	{
 		return false;
 	}
@@ -17028,11 +22077,34 @@ bool encodeAssembly(std::unique_ptr<CAssemblerCommand> content, SymbolData& symD
 	if (g_fileManager->hasOpenFile())
 	{
 		if (!Global.memoryMode)
-			Logger::printError(Logger::Warning,L"File not closed");
+			Logger::printError(Logger::Warning, "File not closed");
 		g_fileManager->closeFile();
 	}
 
+	if (Logger::hasError())
+	{
+		return false;
+	}
+
 	return true;
+}
+
+static void printStats(const AllocationStats &stats)
+{
+	Logger::printLine("Total areas and regions: %lld / %lld", stats.totalUsage, stats.totalSize);
+	Logger::printLine("Total regions: %lld / %lld", stats.sharedUsage, stats.sharedSize);
+	Logger::printLine("Largest area or region: 0x%08llX, %lld / %lld", stats.largestPosition, stats.largestUsage, stats.largestSize);
+
+	int64_t startFreePosition = stats.largestFreePosition + stats.largestFreeUsage;
+	Logger::printLine("Most free area or region: 0x%08llX, %lld / %lld (free at 0x%08llX)", stats.largestFreePosition, stats.largestFreeUsage, stats.largestFreeSize, startFreePosition);
+	int64_t startSharedFreePosition = stats.sharedFreePosition + stats.sharedFreeUsage;
+	Logger::printLine("Most free region: 0x%08llX, %lld / %lld (free at 0x%08llX)", stats.sharedFreePosition, stats.sharedFreeUsage, stats.sharedFreeSize, startSharedFreePosition);
+
+	if (stats.totalPoolSize != 0)
+	{
+		Logger::printLine("Total pool size: %lld", stats.totalPoolSize);
+		Logger::printLine("Largest pool: 0x%08llX, %lld", stats.largestPoolPosition, stats.largestPoolSize);
+	}
 }
 
 bool runArmips(ArmipsArguments& settings)
@@ -17040,27 +22112,26 @@ bool runArmips(ArmipsArguments& settings)
 	// initialize and reset global data
 	Global.Section = 0;
 	Global.nocash = false;
-	Global.FileInfo.FileCount = 0;
 	Global.FileInfo.TotalLineCount = 0;
 	Global.relativeInclude = false;
-	Global.validationPasses = 0;
 	Global.multiThreading = true;
-	Arch = &InvalidArchitecture;
+	Architecture::setCurrent(InvalidArchitecture);
 
 	Tokenizer::clearEquValues();
 	Logger::clear();
+	Allocations::clear();
 	Global.Table.clear();
 	Global.symbolTable.clear();
 
-	Global.FileInfo.FileList.clear();
-	Global.FileInfo.FileCount = 0;
+	Global.fileList.clear();
 	Global.FileInfo.TotalLineCount = 0;
 	Global.FileInfo.LineNumber = 0;
 	Global.FileInfo.FileNum = 0;
 
-#ifdef ARMIPS_ARM
 	Arm.clear();
-#endif
+
+	ExpressionFunctionHandler::instance().reset();
+	registerExpressionFunctions(ExpressionFunctionHandler::instance());
 
 	// process settings
 	Parser parser;
@@ -17085,7 +22156,7 @@ bool runArmips(ArmipsArguments& settings)
 	Global.symbolTable.addLabels(settings.labels);
 	for (const LabelDefinition& label : settings.labels)
 	{
-		symData.addLabel(label.value, label.originalName);
+		symData.addLabel(label.value, label.name.string());
 	}
 
 	if (Logger::hasError())
@@ -17097,9 +22168,9 @@ bool runArmips(ArmipsArguments& settings)
 	{
 	case ArmipsMode::FILE:
 		Global.memoryMode = false;
-		if (input.open(settings.inputFileName,TextFile::Read) == false)
+		if (!input.open(settings.inputFileName,TextFile::Read))
 		{
-			Logger::printError(Logger::Error,L"Could not open file");
+			Logger::printError(Logger::Error, "Could not open file");
 			return false;
 		}
 		break;
@@ -17114,74 +22185,128 @@ bool runArmips(ArmipsArguments& settings)
 	Logger::printQueue();
 
 	bool result = !Logger::hasError();
-	if (result == true && content != nullptr)
+	if (result && content != nullptr)
 		result = encodeAssembly(std::move(content), symData, tempData);
 
 	if (g_fileManager->hasOpenFile())
 	{
 		if (!Global.memoryMode)
-			Logger::printError(Logger::Warning,L"File not closed");
+			Logger::printError(Logger::Warning, "File not closed");
 		g_fileManager->closeFile();
 	}
 
 	// return errors
 	if (settings.errorsResult != nullptr)
 	{
-		StringList errors = Logger::getErrors();
+		std::vector<std::string> errors = Logger::getErrors();
 		for (size_t i = 0; i < errors.size(); i++)
 			settings.errorsResult->push_back(errors[i]);
+	}
+
+	if (settings.showStats)
+		printStats(Allocations::collectStats());
+
+	if (Logger::hasError())
+	{
+		return false;
 	}
 
 	return result;
 }
 
 // file: Core/Common.cpp
+
+
 #include <sys/stat.h>
 
 FileManager fileManager;
 FileManager* g_fileManager = &fileManager;
 
 tGlobal Global;
-CArchitecture* Arch;
 
-std::wstring getFolderNameFromPath(const std::wstring& src)
+void FileList::add(const fs::path &path)
 {
-#ifdef _WIN32
-	size_t s = src.find_last_of(L"\\/");
-#else
-	size_t s = src.rfind(L"/");
-#endif
-	if (s == std::wstring::npos)
-	{
-		return L".";
-	}
-
-	return src.substr(0,s);
+	_entries.emplace_back(path);
 }
 
-std::wstring getFullPathName(const std::wstring& path)
+const fs::path &FileList::path(int fileIndex) const
 {
-	if (Global.relativeInclude == true)
+	return _entries[size_t(fileIndex)].path();
+}
+
+const fs::path &FileList::relative_path(int fileIndex) const
+{
+	return _entries[size_t(fileIndex)].relativePath();
+}
+
+const std::string &FileList::string(int fileIndex) const
+{
+	return _entries[size_t(fileIndex)].string();
+}
+
+const std::string &FileList::relativeString(int fileIndex) const
+{
+	return _entries[size_t(fileIndex)].relativeString();
+}
+
+size_t FileList::size() const
+{
+	return _entries.size();
+}
+
+void FileList::clear()
+{
+	_entries.clear();
+}
+
+FileList::Entry::Entry(const fs::path &path) :
+	_path(path),
+	_relativePath(path.lexically_proximate(fs::current_path())),
+	_string(_path.u8string()),
+	_relativeString(_relativePath.generic_u8string())
+{
+}
+
+const fs::path &FileList::Entry::path() const
+{
+	return _path;
+}
+
+const fs::path &FileList::Entry::relativePath() const
+{
+	return _relativePath;
+}
+
+const std::string &FileList::Entry::string() const
+{
+	return _string;
+}
+
+const std::string &FileList::Entry::relativeString() const
+{
+	return _relativeString;
+}
+
+fs::path getFullPathName(const fs::path& path)
+{
+	if (Global.relativeInclude && !path.is_absolute())
 	{
-		if (isAbsolutePath(path))
-		{
-			return path;
-		} else {
-			std::wstring source = Global.FileInfo.FileList[Global.FileInfo.FileNum];
-			return getFolderNameFromPath(source) + L"/" + path;
-		}
-	} else {
-		return path;
+		const fs::path &source = Global.fileList.path(Global.FileInfo.FileNum);
+		return fs::absolute(source.parent_path() / path).lexically_normal();
+	}
+	else
+	{
+		return fs::absolute(path).lexically_normal();
 	}
 }
 
-bool checkLabelDefined(const std::wstring& labelName, int section)
+bool checkLabelDefined(const Identifier& labelName, int section)
 {
 	std::shared_ptr<Label> label = Global.symbolTable.getLabel(labelName,Global.FileInfo.FileNum,section);
 	return label->isDefined();
 }
 
-bool checkValidLabelName(const std::wstring& labelName)
+bool checkValidLabelName(const Identifier& labelName)
 {
 	return Global.symbolTable.isValidSymbolName(labelName);
 }
@@ -17193,6 +22318,20 @@ bool isPowerOfTwo(int64_t n)
 }
 
 // file: Core/Expression.cpp
+
+
+namespace
+{
+	std::string to_string(int64_t value)
+	{
+		return tfm::format("%d", value);
+	}
+
+	std::string to_string(double value)
+	{
+		return tfm::format("%#.17g", value);
+	}
+}
 
 enum class ExpressionValueCombination
 {
@@ -17235,19 +22374,19 @@ ExpressionValue ExpressionValue::operator+(const ExpressionValue& other) const
 		break;
 	case ExpressionValueCombination::IS:
 		result.type = ExpressionValueType::String;
-		result.strValue = to_wstring(intValue) + other.strValue;
+		result.strValue = StringLiteral(to_string(intValue)) + other.strValue;
 		break;
 	case ExpressionValueCombination::FS:
 		result.type = ExpressionValueType::String;
-		result.strValue = to_wstring(floatValue) + other.strValue;
+		result.strValue = StringLiteral(to_string(floatValue)) + other.strValue;
 		break;
 	case ExpressionValueCombination::SI:
 		result.type = ExpressionValueType::String;
-		result.strValue = strValue + to_wstring(other.intValue);
+		result.strValue = strValue + to_string(other.intValue);
 		break;
 	case ExpressionValueCombination::SF:
 		result.type = ExpressionValueType::String;
-		result.strValue = strValue + to_wstring(other.floatValue);
+		result.strValue = strValue + to_string(other.floatValue);
 		break;
 	case ExpressionValueCombination::SS:
 		result.type = ExpressionValueType::String;
@@ -17323,13 +22462,13 @@ ExpressionValue ExpressionValue::operator/(const ExpressionValue& other) const
 		result.type = ExpressionValueType::Integer;
 		if (intValue == INT64_MIN && other.intValue == -1){
 			result.intValue = INT64_MIN;
-			Logger::queueError(Logger::Warning,L"Division overflow in expression");
+			Logger::queueError(Logger::Warning, "Division overflow in expression");
 			return result;
 		}
 		if (other.intValue == 0)
 		{
 			result.intValue = ~0;
-			Logger::queueError(Logger::Warning,L"Integer division by zero in expression");
+			Logger::queueError(Logger::Warning, "Integer division by zero in expression");
 			return result;
 		}
 		result.intValue = intValue / other.intValue;
@@ -17362,13 +22501,13 @@ ExpressionValue ExpressionValue::operator%(const ExpressionValue& other) const
 		result.type = ExpressionValueType::Integer;
 		if (intValue == INT64_MIN && other.intValue == -1){
 			result.intValue = 0;
-			Logger::queueError(Logger::Warning,L"Division overflow in expression");
+			Logger::queueError(Logger::Warning, "Division overflow in expression");
 			return result;
 		}
 		if (other.intValue == 0)
 		{
 			result.intValue = intValue;
-			Logger::queueError(Logger::Warning,L"Integer division by zero in expression");
+			Logger::queueError(Logger::Warning, "Integer division by zero in expression");
 			return result;
 		}
 		result.intValue = intValue % other.intValue;
@@ -17503,13 +22642,13 @@ bool ExpressionValue::operator==(const ExpressionValue& other) const
 	case ExpressionValueCombination::FF:
 		return floatValue == other.floatValue;
 	case ExpressionValueCombination::IS:
-		return to_wstring(intValue) == other.strValue;
+		return StringLiteral(to_string(intValue)) == other.strValue;
 	case ExpressionValueCombination::FS:
-		return to_wstring(floatValue) == other.strValue;
+		return StringLiteral(to_string(floatValue)) == other.strValue;
 	case ExpressionValueCombination::SI:
-		return strValue == to_wstring(other.intValue);
+		return strValue == to_string(other.intValue);
 	case ExpressionValueCombination::SF:
-		return strValue == to_wstring(other.floatValue);
+		return strValue == to_string(other.floatValue);
 	case ExpressionValueCombination::SS:
 		return strValue == other.strValue;
 	}
@@ -17622,100 +22761,49 @@ ExpressionValue ExpressionValue::operator||(const ExpressionValue& other) const
 	return result;
 }
 
-ExpressionInternal::ExpressionInternal()
-{
-	children = nullptr;
-	childrenCount = 0;
-}
-
-ExpressionInternal::~ExpressionInternal()
-{
-	deallocate();
-}
-
 ExpressionInternal::ExpressionInternal(int64_t value)
 	: ExpressionInternal()
 {
 	type = OperatorType::Integer;
-	intValue = value;
+	this->value = value;
 }
 
 ExpressionInternal::ExpressionInternal(double value)
 	: ExpressionInternal()
 {
 	type = OperatorType::Float;
-	floatValue = value;
+	this->value = value;
 }
 
-ExpressionInternal::ExpressionInternal(const std::wstring& value, OperatorType type)
+ExpressionInternal::ExpressionInternal(Identifier value)
 	: ExpressionInternal()
 {
-	this->type = type;
-	strValue = value;
-
-	switch (type)
-	{
-	case OperatorType::Identifier:
-		fileNum = Global.FileInfo.FileNum;
-		section = Global.Section;
-		break;
-	case OperatorType::String:
-		break;
-	default:
-		break;
-	}
+	this->type = OperatorType::Identifier;
+	this->value = std::move(value);
+	fileNum = Global.FileInfo.FileNum;
+	section = Global.Section;
 }
 
-ExpressionInternal::ExpressionInternal(OperatorType op, ExpressionInternal* a,
-	ExpressionInternal* b, ExpressionInternal* c)
+ExpressionInternal::ExpressionInternal(StringLiteral value)
 	: ExpressionInternal()
 {
-	type = op;
-	allocate(3);
-
-	children[0] = a;
-	children[1] = b;
-	children[2] = c;
+	this->type = OperatorType::String;
+	this->value = std::move(value);
 }
 
-ExpressionInternal::ExpressionInternal(const std::wstring& name, const std::vector<ExpressionInternal*>& parameters)
+ExpressionInternal::ExpressionInternal(const Identifier& name, std::vector<std::unique_ptr<ExpressionInternal>> parameters)
 	: ExpressionInternal()
 {
 	type = OperatorType::FunctionCall;
-	allocate(parameters.size());
-
-	strValue = name;
-	for (size_t i = 0; i < parameters.size(); i++)
-	{
-		children[i] = parameters[i];
-	}
+	this->value = name;
+	children = std::move(parameters);
 }
 
-void ExpressionInternal::allocate(size_t count)
+void ExpressionInternal::replaceMemoryPos(const Identifier& identifierName)
 {
-	deallocate();
-
-	children = new ExpressionInternal*[count];
-	childrenCount = count;
-}
-
-void ExpressionInternal::deallocate()
-{
-	for (size_t i = 0; i < childrenCount; i++)
+	for (size_t i = 0; i < children.size(); i++)
 	{
-		delete children[i];
-	}
-
-	delete[] children;
-	children = nullptr;
-	childrenCount = 0;
-}
-
-void ExpressionInternal::replaceMemoryPos(const std::wstring& identifierName)
-{
-	for (size_t i = 0; i < childrenCount; i++)
-	{
-		if (children[i] != nullptr)
+		if (children[i])
 		{
 			children[i]->replaceMemoryPos(identifierName);
 		}
@@ -17724,139 +22812,48 @@ void ExpressionInternal::replaceMemoryPos(const std::wstring& identifierName)
 	if (type == OperatorType::MemoryPos)
 	{
 		type = OperatorType::Identifier;
-		strValue = identifierName;
+		value = identifierName;
 		fileNum = Global.FileInfo.FileNum;
 		section = Global.Section;
 	}
 }
 
-bool ExpressionInternal::checkParameterCount(size_t minParams, size_t maxParams)
-{
-	if (minParams > childrenCount)
-	{
-		Logger::queueError(Logger::Error,L"Not enough parameters for \"%s\" (min %d)",strValue,minParams);
-		return false;
-	}
-
-	if (maxParams < childrenCount)
-	{
-		Logger::queueError(Logger::Error,L"Too many parameters for \"%s\" (min %d)",strValue,maxParams);
-		return false;
-	}
-
-	return true;
-}
-
-ExpressionValue ExpressionInternal::executeExpressionFunctionCall(const ExpressionFunctionEntry& entry)
-{
-	// check parameters
-	if (!checkParameterCount(entry.minParams, entry.maxParams))
-		return {};
-
-	// evaluate parameters
-	std::vector<ExpressionValue> params;
-	params.reserve(childrenCount);
-
-	for (size_t i = 0; i < childrenCount; i++)
-	{
-		ExpressionValue result = children[i]->evaluate();
-		if (!result.isValid())
-		{
-			Logger::queueError(Logger::Error,L"%s: Invalid parameter %d", strValue, i+1);
-			return result;
-		}
-
-		params.push_back(result);
-	}
-
-	// execute
-	return entry.function(strValue, params);
-}
-
-ExpressionValue ExpressionInternal::executeExpressionLabelFunctionCall(const ExpressionLabelFunctionEntry& entry)
-{
-	// check parameters
-	if (!checkParameterCount(entry.minParams, entry.maxParams))
-		return {};
-
-	// evaluate parameters
-	std::vector<std::shared_ptr<Label>> params;
-	params.reserve(childrenCount);
-
-	for (size_t i = 0; i < childrenCount; i++)
-	{
-		ExpressionInternal *exp = children[i];
-		if (!exp || !exp->isIdentifier())
-		{
-			Logger::queueError(Logger::Error,L"%s: Invalid parameter %d, expecting identifier", strValue, i+1);
-			return {};
-		}
-
-		const std::wstring& name = exp->getStringValue();
-		std::shared_ptr<Label> label = Global.symbolTable.getLabel(name,exp->getFileNum(),exp->getSection());
-		params.push_back(label);
-	}
-
-	// execute
-	return entry.function(strValue, params);
-}
-
 ExpressionValue ExpressionInternal::executeFunctionCall()
 {
-	// try expression functions
-	auto expFuncIt = expressionFunctions.find(strValue);
-	if (expFuncIt != expressionFunctions.end())
-		return executeExpressionFunctionCall(expFuncIt->second);
+	const auto &functionName = valueAs<Identifier>();
 
-	// try expression label functions
-	auto expLabelFuncIt = expressionLabelFunctions.find(strValue);
-	if (expLabelFuncIt != expressionLabelFunctions.end())
-		return executeExpressionLabelFunctionCall(expLabelFuncIt->second);
+	auto handle = ExpressionFunctionHandler::instance().find(functionName);
+	if (!handle)
+	{
+		Logger::queueError(Logger::Error, "Unknown function \"%s\"", functionName);
+		return {};
+	}
 
-	// try architecture specific expression functions
-	auto& archExpressionFunctions = Arch->getExpressionFunctions();
-	expFuncIt = archExpressionFunctions.find(strValue);
-	if (expFuncIt != archExpressionFunctions.end())
-		return executeExpressionFunctionCall(expFuncIt->second);
+	if (handle->minParams() > children.size())
+	{
+		Logger::queueError(Logger::Error, "Not enough parameters for \"%s\" (%d<%d)", functionName, children.size(), handle->minParams());
+		return {};
+	}
 
-	// error
-	Logger::queueError(Logger::Error, L"Unknown function \"%s\"", strValue);
-	return {};
+	if (handle->maxParams() < children.size())
+	{
+		Logger::queueError(Logger::Error, "Too many parameters for \"%s\" (%d>%d)", functionName, children.size(), handle->maxParams());
+		return {};
+	}
+
+	return handle->execute(children);
 }
 
-bool isExpressionFunctionSafe(const std::wstring& name, bool inUnknownOrFalseBlock)
+bool isExpressionFunctionSafe(const Identifier& name, bool inUnknownOrFalseBlock)
 {
-	// expression functions may be unsafe, others are safe
-	ExpFuncSafety safety = ExpFuncSafety::Unsafe;
-	bool found = false;
-
-	auto it = expressionFunctions.find(name);
-	if (it != expressionFunctions.end())
+	auto handle = ExpressionFunctionHandler::instance().find(name);
+	if (!handle)
 	{
-		safety = it->second.safety;
-		found = true;
+		// well, a function that doesn't exist at least won't change its behavior...
+		return true;
 	}
 
-	if (!found)
-	{
-		auto labelIt = expressionLabelFunctions.find(name);
-		if (labelIt != expressionLabelFunctions.end())
-		{
-			safety = labelIt->second.safety;
-			found = true;
-		}
-	}
-
-	if (!found)
-	{
-		auto& archExpressionFunctions = Arch->getExpressionFunctions();
-		it = archExpressionFunctions.find(name);
-		if (it != archExpressionFunctions.end())
-		{
-			safety = it->second.safety;
-			found = true;
-		}
-	}
+	ExpFuncSafety safety = handle->safety();
 
 	if (inUnknownOrFalseBlock && safety == ExpFuncSafety::ConditionalUnsafe)
 		return false;
@@ -17875,7 +22872,7 @@ bool ExpressionInternal::simplify(bool inUnknownOrFalseBlock)
 	case OperatorType::ToString:
 		return false;
 	case OperatorType::FunctionCall:
-		if (isExpressionFunctionSafe(strValue, inUnknownOrFalseBlock) == false)
+		if (!isExpressionFunctionSafe(valueAs<Identifier>(), inUnknownOrFalseBlock))
 			return false;
 		break;
 	default:
@@ -17884,9 +22881,9 @@ bool ExpressionInternal::simplify(bool inUnknownOrFalseBlock)
 
 	// check if the same applies to all children
 	bool canSimplify = true;
-	for (size_t i = 0; i < childrenCount; i++)
+	for (size_t i = 0; i < children.size(); i++)
 	{
-		if (children[i] != nullptr && children[i]->simplify(inUnknownOrFalseBlock) == false)
+		if (children[i] != nullptr && !children[i]->simplify(inUnknownOrFalseBlock))
 			canSimplify = false;
 	}
 
@@ -17899,22 +22896,22 @@ bool ExpressionInternal::simplify(bool inUnknownOrFalseBlock)
 		{
 		case ExpressionValueType::Integer:
 			type = OperatorType::Integer;
-			intValue = value.intValue;
+			this->value = value.intValue;
 			break;
 		case ExpressionValueType::Float:
 			type = OperatorType::Float;
-			floatValue = value.floatValue;
+			this->value = value.floatValue;
 			break;
 		case ExpressionValueType::String:
 			type = OperatorType::String;
-			strValue = value.strValue;
+			this->value = value.strValue;
 			break;
 		default:
 			type = OperatorType::Invalid;
 			break;
 		}
 
-		deallocate();
+		children.clear();
 	}
 
 	return canSimplify;
@@ -17929,23 +22926,23 @@ ExpressionValue ExpressionInternal::evaluate()
 	{
 	case OperatorType::Integer:
 		val.type = ExpressionValueType::Integer;
-		val.intValue = intValue;
+		val.intValue = valueAs<int64_t>();
 		return val;
 	case OperatorType::Float:
 		val.type = ExpressionValueType::Float;
-		val.floatValue = floatValue;
+		val.floatValue = valueAs<double>();
 		return val;
 	case OperatorType::Identifier:
-		label = Global.symbolTable.getLabel(strValue,fileNum,section);
+		label = Global.symbolTable.getLabel(valueAs<Identifier>(),fileNum,section);
 		if (label == nullptr)
 		{
-			Logger::queueError(Logger::Error,L"Invalid label name \"%s\"",strValue);
+			Logger::queueError(Logger::Error, "Invalid label name \"%s\"", valueAs<Identifier>());
 			return val;
 		}
 
 		if (!label->isDefined())
 		{
-			Logger::queueError(Logger::Error,L"Undefined label \"%s\"",label->getName());
+			Logger::queueError(Logger::Error, "Undefined label \"%s\"",label->getName());
 			return val;
 		}
 
@@ -17954,7 +22951,7 @@ ExpressionValue ExpressionInternal::evaluate()
 		return val;
 	case OperatorType::String:
 		val.type = ExpressionValueType::String;
-		val.strValue = strValue;
+		val.strValue = valueAs<StringLiteral>();
 		return val;
 	case OperatorType::MemoryPos:
 		val.type = ExpressionValueType::Integer;
@@ -18034,109 +23031,101 @@ ExpressionValue ExpressionInternal::evaluate()
 	}
 }
 
-static std::wstring escapeString(const std::wstring& text)
+static std::string escapeString(const std::string& text)
 {
-	std::wstring result = text;
-	replaceAll(result,LR"(\)",LR"(\\)");
-	replaceAll(result,LR"(")",LR"(\")");
+	std::string result = text;
+	replaceAll(result,R"(\)",R"(\\)");
+	replaceAll(result,R"(")",R"(\")");
 
-	return formatString(LR"("%s")",text);
+	return tfm::format(R"("%s")",text);
 }
 
-std::wstring ExpressionInternal::formatFunctionCall()
+std::string ExpressionInternal::formatFunctionCall()
 {
-	std::wstring text = strValue + L"(";
+	std::string text = valueAs<StringLiteral>().string() + "(";
 
-	for (size_t i = 0; i < childrenCount; i++)
+	for (size_t i = 0; i < children.size(); i++)
 	{
 		if (i != 0)
-			text += L",";
+			text += ",";
 		text += children[i]->toString();
 	}
 
-	return text + L")";
+	return text + ")";
 }
 
-std::wstring ExpressionInternal::toString()
+std::string ExpressionInternal::toString()
 {
 	switch (type)
 	{
 	case OperatorType::Integer:
-		return formatString(L"%d",intValue);
+		return tfm::format("%d",valueAs<int64_t>());
 	case OperatorType::Float:
-		return formatString(L"%g",floatValue);
+		return tfm::format("%g",valueAs<double>());
 	case OperatorType::Identifier:
-		return strValue;
+		return valueAs<Identifier>().string();
 	case OperatorType::String:
-		return escapeString(strValue);
+		return escapeString(valueAs<StringLiteral>().string());
 	case OperatorType::MemoryPos:
-		return L".";
+		return ".";
 	case OperatorType::Add:
-		return formatString(L"(%s + %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s + %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Sub:
-		return formatString(L"(%s - %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s - %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Mult:
-		return formatString(L"(%s * %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s * %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Div:
-		return formatString(L"(%s / %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s / %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Mod:
-		return formatString(L"(%s %% %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s %% %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Neg:
-		return formatString(L"(-%s)",children[0]->toString());
+		return tfm::format("(-%s)",children[0]->toString());
 	case OperatorType::LogNot:
-		return formatString(L"(!%s)",children[0]->toString());
+		return tfm::format("(!%s)",children[0]->toString());
 	case OperatorType::BitNot:
-		return formatString(L"(~%s)",children[0]->toString());
+		return tfm::format("(~%s)",children[0]->toString());
 	case OperatorType::LeftShift:
-		return formatString(L"(%s << %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s << %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::RightShift:
-		return formatString(L"(%s >> %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s >> %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Less:
-		return formatString(L"(%s < %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s < %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Greater:
-		return formatString(L"(%s > %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s > %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::LessEqual:
-		return formatString(L"(%s <= %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s <= %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::GreaterEqual:
-		return formatString(L"(%s >= %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s >= %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Equal:
-		return formatString(L"(%s == %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s == %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::NotEqual:
-		return formatString(L"(%s != %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s != %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::BitAnd:
-		return formatString(L"(%s & %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s & %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::BitOr:
-		return formatString(L"(%s | %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s | %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::LogAnd:
-		return formatString(L"(%s && %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s && %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::LogOr:
-		return formatString(L"(%s || %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s || %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::Xor:
-		return formatString(L"(%s ^ %s)",children[0]->toString(),children[1]->toString());
+		return tfm::format("(%s ^ %s)",children[0]->toString(),children[1]->toString());
 	case OperatorType::TertiaryIf:
-		return formatString(L"(%s ? %s : %s)",children[0]->toString(),children[1]->toString(),children[2]->toString());
+		return tfm::format("(%s ? %s : %s)",children[0]->toString(),children[1]->toString(),children[2]->toString());
 	case OperatorType::ToString:
-		return formatString(L"(%c%s)",L'\U000000B0',children[0]->toString());
+		return tfm::format("(%s%s)",convertUnicodeCharToUtf8(u'\u00B0'),children[0]->toString());
 	case OperatorType::FunctionCall:
 		return formatFunctionCall();
 	default:
-		return L"";
+		return "";
 	}
 }
 
-Expression::Expression()
+Expression::Expression(std::unique_ptr<ExpressionInternal> exp, bool inUnknownOrFalseBlock) :
+	expression(std::move(exp))
 {
-	expression = nullptr;
-	constExpression = true;
-}
-
-void Expression::setExpression(ExpressionInternal* exp, bool inUnknownOrFalseBlock)
-{
-	expression = std::shared_ptr<ExpressionInternal>(exp);
-	if (exp != nullptr)
+	if (expression)
 		constExpression = expression->simplify(inUnknownOrFalseBlock);
-	else
-		constExpression = true;
 }
 
 ExpressionValue Expression::evaluate()
@@ -18150,34 +23139,290 @@ ExpressionValue Expression::evaluate()
 	return expression->evaluate();
 }
 
-void Expression::replaceMemoryPos(const std::wstring& identifierName)
+void Expression::replaceMemoryPos(const Identifier& identifierName)
 {
 	if (expression != nullptr)
 		expression->replaceMemoryPos(identifierName);
 }
 
+bool Expression::evaluateString(StringLiteral &dest, bool convert)
+{
+	if (expression == nullptr)
+		return false;
+
+	ExpressionValue value = expression->evaluate();
+	if (convert && value.isInt())
+	{
+		dest = to_string(value.intValue);
+		return true;
+	}
+
+	if (convert && value.isFloat())
+	{
+		dest = to_string(value.floatValue);
+		return true;
+	}
+
+	if (!value.isString())
+		return false;
+
+	dest = value.strValue;
+	return true;
+}
+
+bool Expression::evaluateIdentifier(Identifier &dest)
+{
+	if (expression == nullptr || !expression->isIdentifier())
+		return false;
+
+	dest = expression->getIdentifier();
+	return true;
+}
+
+std::string Expression::toString()
+{
+	return expression != nullptr ? expression->toString() : "";
+}
+
 Expression createConstExpression(int64_t value)
 {
-	Expression exp;
-	ExpressionInternal* num = new ExpressionInternal(value);
-	exp.setExpression(num,false);
-	return exp;
+	return Expression(std::make_unique<ExpressionInternal>(value), false);
+}
+
+// file: Core/ExpressionFunctionHandler.cpp
+
+
+ExpressionFunctionHandler &ExpressionFunctionHandler::instance()
+{
+	static ExpressionFunctionHandler handler;
+	return handler;
+}
+
+ExpressionFunctionHandler::ExpressionFunctionHandler()
+{
+}
+
+std::optional<ExpressionFunctionHandle> ExpressionFunctionHandler::find(const Identifier &name) const
+{
+	auto it = entries.find(name);
+	return it != entries.end() ? std::make_optional(ExpressionFunctionHandle(it->second)) : std::nullopt;
+}
+
+void ExpressionFunctionHandler::reset()
+{
+	entries.clear();
+	architectureFunctions.clear();
+}
+
+void ExpressionFunctionHandler::updateArchitecture()
+{
+	// remove functions of previous architecture
+	for (const auto &name : architectureFunctions)
+	{
+		entries.erase(name);
+	}
+
+	architectureFunctions.clear();
+
+	// Add functions of current architecture. Remember functions that were added
+	registeringArchitecture = true;
+	Architecture::current().registerExpressionFunctions(*this);
+	registeringArchitecture = false;
+}
+
+bool ExpressionFunctionHandler::registerEntry(const Identifier &name, Entry entry)
+{
+	bool result = entries.emplace(name, std::move(entry)).second;
+
+	if (result && registeringArchitecture)
+		architectureFunctions.push_back(name);
+
+	return result;
+}
+
+bool ExpressionFunctionHandler::addFunction(const Identifier &name, ExpressionFunction functor, size_t minParams, size_t maxParams, ExpFuncSafety safety)
+{
+	auto executor = [name, functor](const std::vector<std::unique_ptr<ExpressionInternal>> &parameters) -> ExpressionValue
+	{
+		// evaluate parameters
+		std::vector<ExpressionValue> params;
+		params.reserve(parameters.size());
+
+		for (size_t i = 0; i < parameters.size(); i++)
+		{
+			ExpressionValue result = parameters[i]->evaluate();
+			if (!result.isValid())
+			{
+				Logger::queueError(Logger::Error, "%s: Invalid parameter %d", name, i+1);
+				return result;
+			}
+
+			params.push_back(result);
+		}
+
+		// execute
+		return functor(name, params);
+	};
+
+	return registerEntry(name, Entry{std::move(executor), minParams, maxParams, safety});
+};
+
+bool ExpressionFunctionHandler::addLabelFunction(const Identifier &name, ExpressionLabelFunction functor, size_t minParams, size_t maxParams, ExpFuncSafety safety)
+{
+	auto executor = [name, functor](const std::vector<std::unique_ptr<ExpressionInternal>> &parameters) -> ExpressionValue
+	{
+		// evaluate parameters
+		std::vector<std::shared_ptr<Label>> params;
+		params.reserve(parameters.size());
+
+		for (size_t i = 0; i < parameters.size(); i++)
+		{
+			ExpressionInternal *exp = parameters[i].get();
+			if (!exp || !exp->isIdentifier())
+			{
+				Logger::queueError(Logger::Error, "%s: Invalid parameter %d, expecting identifier", name, i+1);
+				return {};
+			}
+
+			const Identifier& name = exp->getIdentifier();
+			std::shared_ptr<Label> label = Global.symbolTable.getLabel(name, exp->getFileNum(), exp->getSection());
+			params.push_back(label);
+		}
+
+		// execute
+		return functor(name, params);
+	};
+
+	return registerEntry(name, Entry{std::move(executor), minParams, maxParams, safety});
+};
+
+bool ExpressionFunctionHandler::addUserFunction(const Identifier &name, const std::vector<Identifier> &parameters, const std::vector<Token> &content)
+{
+	// Executor: Evaluate parameters and instantiate function content with parameter substitutions
+	auto executor = [functionName=name, parameterNames=parameters, content](const std::vector<std::unique_ptr<ExpressionInternal>> &parameters) -> ExpressionValue
+	{
+		// evaluate parameters
+		std::vector<ExpressionValue> params;
+		params.reserve(parameters.size());
+
+		for (size_t i = 0; i < parameters.size(); i++)
+		{
+			ExpressionValue result = parameters[i]->evaluate();
+			if (!result.isValid())
+			{
+				Logger::queueError(Logger::Error, "%s: Invalid parameter %d", functionName, i+1);
+				return result;
+			}
+
+			params.push_back(result);
+		}
+
+		// instantiate
+		TokenStreamTokenizer tok;
+		tok.init(content);
+
+		for (size_t i = 0; i < parameters.size(); ++i)
+		{
+			const auto &paramName = parameterNames[i];
+			const auto &paramValue = params[i];
+
+			switch (paramValue.type)
+			{
+			case ExpressionValueType::Float:
+				tok.registerReplacementFloat(paramName, paramValue.floatValue);
+				break;
+			case ExpressionValueType::String:
+				tok.registerReplacementString(paramName, paramValue.strValue.string());
+				break;
+			case ExpressionValueType::Integer:
+				tok.registerReplacementInteger(paramName, paramValue.intValue);
+				break;
+			case ExpressionValueType::Invalid: // will not occur, invalid results are caught above
+				break;
+			}
+		}
+
+		Expression result = parseExpression(tok, false);
+		if (!result.isLoaded())
+		{
+			Logger::queueError(Logger::Error, "%s: Failed to parse user function expression", functionName);
+			return {};
+		}
+
+		if (!tok.atEnd())
+		{
+			Logger::queueError(Logger::Error, "%s: Unconsumed tokens after parsing user function expresion", functionName);
+			return {};
+		}
+
+		// evaluate expression
+		return result.evaluate();
+	};
+
+	return registerEntry(name, Entry{std::move(executor), parameters.size(), parameters.size(), ExpFuncSafety::Unsafe});
+}
+
+
+ExpressionFunctionHandle::ExpressionFunctionHandle(const ExpressionFunctionHandler::Entry &entry) :
+	impl(entry)
+{
+}
+
+size_t ExpressionFunctionHandle::minParams() const
+{
+	return impl.minParams;
+}
+
+size_t ExpressionFunctionHandle::maxParams() const
+{
+	return impl.maxParams;
+}
+
+ExpFuncSafety ExpressionFunctionHandle::safety() const
+{
+	return impl.safety;
+}
+
+ExpressionValue ExpressionFunctionHandle::execute(const std::vector<std::unique_ptr<ExpressionInternal> > &parameters) const
+{
+	if (parameters.size() < impl.minParams || parameters.size() > impl.maxParams)
+		return {};
+
+	return impl.f(parameters);
 }
 
 // file: Core/ExpressionFunctions.cpp
+
+
+#include <cmath>
+
 #if ARMIPS_REGEXP
 #include <regex>
 #endif
 
+#if defined(__clang__)
+#if __has_feature(cxx_exceptions)
+#define ARMIPS_EXCEPTIONS 1
+#else
+#define ARMIPS_EXCEPTIONS 0
+#endif
+#elif defined(_MSC_VER) && defined(_CPPUNWIND)
+#define ARMIPS_EXCEPTIONS 1
+#elif defined(__EXCEPTIONS) || defined(__cpp_exceptions)
+#define ARMIPS_EXCEPTIONS 1
+#else
+#define ARMIPS_EXCEPTIONS 0
+#endif
+
 bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, int64_t& dest,
-	const std::wstring& funcName, bool optional)
+	const Identifier &funcName, bool optional)
 {
 	if (optional && index >= parameters.size())
 		return true;
 
-	if (index >= parameters.size() || parameters[index].isInt() == false)
+	if (index >= parameters.size() || !parameters[index].isInt())
 	{
-		Logger::queueError(Logger::Error,L"Invalid parameter %d for %s: expecting integer",index+1,funcName);
+		Logger::queueError(Logger::Error, "Invalid parameter %d for %s: expecting integer",index+1,funcName);
 		return false;
 	}
 
@@ -18185,15 +23430,15 @@ bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t 
 	return true;
 }
 
-bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, const std::wstring*& dest,
-	const std::wstring& funcName, bool optional)
+bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t index, const StringLiteral*& dest,
+	const Identifier &funcName, bool optional)
 {
 	if (optional && index >= parameters.size())
 		return true;
 
-	if (index >= parameters.size() || parameters[index].isString() == false)
+	if (index >= parameters.size() || !parameters[index].isString())
 	{
-		Logger::queueError(Logger::Error,L"Invalid parameter %d for %s: expecting string",index+1,funcName);
+		Logger::queueError(Logger::Error, "Invalid parameter %d for %s: expecting string",index+1,funcName);
 		return false;
 	}
 
@@ -18210,13 +23455,13 @@ bool getExpFuncParameter(const std::vector<ExpressionValue>& parameters, size_t 
 		return ExpressionValue();
 
 
-ExpressionValue expFuncVersion(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncVersion(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t value = ARMIPS_VERSION_MAJOR*1000 + ARMIPS_VERSION_MINOR*10 + ARMIPS_VERSION_REVISION;
 	return ExpressionValue(value);
 }
 
-ExpressionValue expFuncEndianness(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncEndianness(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 	result.type = ExpressionValueType::String;
@@ -18224,46 +23469,48 @@ ExpressionValue expFuncEndianness(const std::wstring& funcName, const std::vecto
 	switch (g_fileManager->getEndianness())
 	{
 	case Endianness::Little:
-		return ExpressionValue(L"little");
+		return ExpressionValue(StringLiteral("little"));
 	case Endianness::Big:
-		return ExpressionValue(L"big");
+		return ExpressionValue(StringLiteral("big"));
 	}
 
 	return ExpressionValue();
 }
 
-ExpressionValue expFuncOutputName(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncOutputName(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	std::shared_ptr<AssemblerFile> file = g_fileManager->getOpenFile();
 	if (file == nullptr)
 	{
-		Logger::queueError(Logger::Error,L"outputName: no file opened");
+		Logger::queueError(Logger::Error, "outputName: no file opened");
 		return ExpressionValue();
 	}
 
-	std::wstring value = file->getFileName();
+	std::string value = file->getFileName().u8string();
 	return ExpressionValue(value);
 }
 
-ExpressionValue expFuncFileExists(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncFileExists(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* fileName;
+	const StringLiteral* fileName;
 	GET_PARAM(parameters,0,fileName);
 
-	std::wstring fullName = getFullPathName(*fileName);
-	return ExpressionValue(fileExists(fullName) ? INT64_C(1) : INT64_C(0));
+	auto fullName = getFullPathName(fileName->path());
+	return ExpressionValue(fs::exists(fullName) ? INT64_C(1) : INT64_C(0));
 }
 
-ExpressionValue expFuncFileSize(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncFileSize(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* fileName;
+	const StringLiteral* fileName;
 	GET_PARAM(parameters,0,fileName);
 
-	std::wstring fullName = getFullPathName(*fileName);
-	return ExpressionValue((int64_t) fileSize(fullName));
+	auto fullName = getFullPathName(fileName->path());
+
+	std::error_code error;
+	return ExpressionValue(static_cast<int64_t>(fs::file_size(fullName, error)));
 }
 
-ExpressionValue expFuncToString(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncToString(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 
@@ -18273,10 +23520,10 @@ ExpressionValue expFuncToString(const std::wstring& funcName, const std::vector<
 		result.strValue = parameters[0].strValue;
 		break;
 	case ExpressionValueType::Integer:
-		result.strValue = formatString(L"%d",parameters[0].intValue);
+		result.strValue = tfm::format("%d",parameters[0].intValue);
 		break;
 	case ExpressionValueType::Float:
-		result.strValue = formatString(L"%#.17g",parameters[0].floatValue);
+		result.strValue = tfm::format("%#.17g",parameters[0].floatValue);
 		break;
 	default:
 		return result;
@@ -18286,16 +23533,16 @@ ExpressionValue expFuncToString(const std::wstring& funcName, const std::vector<
 	return result;
 }
 
-ExpressionValue expFuncToHex(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncToHex(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t value, digits;
 	GET_PARAM(parameters,0,value);
 	GET_OPTIONAL_PARAM(parameters,1,digits,8);
 
-	return ExpressionValue(formatString(L"%0*X",digits,value));
+	return ExpressionValue(tfm::format("%0*X",digits,value));
 }
 
-ExpressionValue expFuncInt(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncInt(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 
@@ -18315,7 +23562,7 @@ ExpressionValue expFuncInt(const std::wstring& funcName, const std::vector<Expre
 	return result;
 }
 
-ExpressionValue expFuncRound(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncRound(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 
@@ -18335,7 +23582,7 @@ ExpressionValue expFuncRound(const std::wstring& funcName, const std::vector<Exp
 	return result;
 }
 
-ExpressionValue expFuncFloat(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncFloat(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 
@@ -18355,7 +23602,7 @@ ExpressionValue expFuncFloat(const std::wstring& funcName, const std::vector<Exp
 	return result;
 }
 
-ExpressionValue expFuncFrac(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncFrac(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 	double intPart;
@@ -18373,7 +23620,7 @@ ExpressionValue expFuncFrac(const std::wstring& funcName, const std::vector<Expr
 	return result;
 }
 
-ExpressionValue expFuncMin(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncMin(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 	double floatMin, floatCur;
@@ -18419,7 +23666,7 @@ ExpressionValue expFuncMin(const std::wstring& funcName, const std::vector<Expre
 	return result;
 }
 
-ExpressionValue expFuncMax(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncMax(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 	double floatMax, floatCur;
@@ -18465,7 +23712,7 @@ ExpressionValue expFuncMax(const std::wstring& funcName, const std::vector<Expre
 	return result;
 }
 
-ExpressionValue expFuncAbs(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncAbs(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	ExpressionValue result;
 
@@ -18487,31 +23734,31 @@ ExpressionValue expFuncAbs(const std::wstring& funcName, const std::vector<Expre
 	return result;
 }
 
-ExpressionValue expFuncStrlen(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncStrlen(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* source;
+	const StringLiteral* source;
 	GET_PARAM(parameters,0,source);
 
 	return ExpressionValue((int64_t)source->size());
 }
 
-ExpressionValue expFuncSubstr(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncSubstr(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t start, count;
-	const std::wstring* source;
+	const StringLiteral* source;
 
 	GET_PARAM(parameters,0,source);
 	GET_PARAM(parameters,1,start);
 	GET_PARAM(parameters,2,count);
 
-	return ExpressionValue(source->substr((size_t)start,(size_t)count));
+	return ExpressionValue(source->string().substr((size_t)start,(size_t)count));
 }
 
 #if ARMIPS_REGEXP
-ExpressionValue expFuncRegExMatch(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncRegExMatch(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* source;
-	const std::wstring* regexString;
+	const StringLiteral* source;
+	const StringLiteral* regexString;
 
 	GET_PARAM(parameters,0,source);
 	GET_PARAM(parameters,1,regexString);
@@ -18520,22 +23767,22 @@ ExpressionValue expFuncRegExMatch(const std::wstring& funcName, const std::vecto
 	try
 	{
 #endif
-		std::wregex regex(*regexString);
-		bool found = std::regex_match(*source,regex);
+		std::regex regex(regexString->string());
+		bool found = std::regex_match(source->string(),regex);
 		return ExpressionValue(found ? INT64_C(1) : INT64_C(0));
 #if ARMIPS_EXCEPTIONS
 	} catch (std::regex_error&)
 	{
-		Logger::queueError(Logger::Error,L"Invalid regular expression");
+		Logger::queueError(Logger::Error, "Invalid regular expression");
 		return ExpressionValue();
 	}
 #endif
 }
 
-ExpressionValue expFuncRegExSearch(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncRegExSearch(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* source;
-	const std::wstring* regexString;
+	const StringLiteral* source;
+	const StringLiteral* regexString;
 
 	GET_PARAM(parameters,0,source);
 	GET_PARAM(parameters,1,regexString);
@@ -18544,22 +23791,22 @@ ExpressionValue expFuncRegExSearch(const std::wstring& funcName, const std::vect
 	try
 	{
 #endif
-		std::wregex regex(*regexString);
-		bool found = std::regex_search(*source,regex);
+		std::regex regex(regexString->string());
+		bool found = std::regex_search(source->string(),regex);
 		return ExpressionValue(found ? INT64_C(1) : INT64_C(0));
 #if ARMIPS_EXCEPTIONS
 	} catch (std::regex_error&)
 	{
-		Logger::queueError(Logger::Error,L"Invalid regular expression");
+		Logger::queueError(Logger::Error, "Invalid regular expression");
 		return ExpressionValue();
 	}
 #endif
 }
 
-ExpressionValue expFuncRegExExtract(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncRegExExtract(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* source;
-	const std::wstring* regexString;
+	const StringLiteral* source;
+	const StringLiteral* regexString;
 	int64_t matchIndex;
 
 	GET_PARAM(parameters,0,source);
@@ -18570,12 +23817,12 @@ ExpressionValue expFuncRegExExtract(const std::wstring& funcName, const std::vec
 	try
 	{
 #endif
-		std::wregex regex(*regexString);
-		std::wsmatch result;
-		bool found = std::regex_search(*source,result,regex);
-		if (found == false || (size_t)matchIndex >= result.size())
+		std::regex regex(regexString->string());
+		std::smatch result;
+		bool found = std::regex_search(source->string(),result,regex);
+		if (!found || (size_t)matchIndex >= result.size())
 		{
-			Logger::queueError(Logger::Error,L"Capture group index %d does not exist",matchIndex);
+			Logger::queueError(Logger::Error, "Capture group index %d does not exist",matchIndex);
 			return ExpressionValue();
 		}
 
@@ -18583,75 +23830,82 @@ ExpressionValue expFuncRegExExtract(const std::wstring& funcName, const std::vec
 #if ARMIPS_EXCEPTIONS
 	} catch (std::regex_error&)
 	{
-		Logger::queueError(Logger::Error,L"Invalid regular expression");
+		Logger::queueError(Logger::Error, "Invalid regular expression");
 		return ExpressionValue();
 	}
 #endif
 }
 #endif
 
-ExpressionValue expFuncFind(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncFind(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t start;
-	const std::wstring* source;
-	const std::wstring* value;
+	const StringLiteral* source;
+	const StringLiteral* value;
 
 	GET_PARAM(parameters,0,source);
 	GET_PARAM(parameters,1,value);
 	GET_OPTIONAL_PARAM(parameters,2,start,0);
 
-	size_t pos = source->find(*value,(size_t)start);
-	return ExpressionValue(pos == std::wstring::npos ? INT64_C(-1) : (int64_t) pos);
+	size_t pos = source->string().find(value->string(),(size_t)start);
+	return ExpressionValue(pos == std::string::npos ? INT64_C(-1) : (int64_t) pos);
 }
 
-ExpressionValue expFuncRFind(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncRFind(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
 	int64_t start;
-	const std::wstring* source;
-	const std::wstring* value;
+	const StringLiteral* source;
+	const StringLiteral* value;
 
 	GET_PARAM(parameters,0,source);
 	GET_PARAM(parameters,1,value);
-	GET_OPTIONAL_PARAM(parameters,2,start,std::wstring::npos);
+	GET_OPTIONAL_PARAM(parameters,2,start,std::string::npos);
 
-	size_t pos = source->rfind(*value,(size_t)start);
-	return ExpressionValue(pos == std::wstring::npos ? INT64_C(-1) : (int64_t) pos);
+	size_t pos = source->string().rfind(value->string(),(size_t)start);
+	return ExpressionValue(pos == std::string::npos ? INT64_C(-1) : (int64_t) pos);
 }
 
 
 template<typename T>
-ExpressionValue expFuncRead(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncRead(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* fileName;
+	const StringLiteral* fileName;
 	int64_t pos;
 
 	GET_PARAM(parameters,0,fileName);
 	GET_OPTIONAL_PARAM(parameters,1,pos,0);
 
-	std::wstring fullName = getFullPathName(*fileName);
+	auto fullName = getFullPathName(fileName->path());
 
-	BinaryFile file;
-	if (file.open(fullName,BinaryFile::Read) == false)
+	fs::ifstream file(fullName, fs::ifstream::in | fs::ifstream::binary);
+	if (!file.is_open())
 	{
-		Logger::queueError(Logger::Error,L"Could not open %s",*fileName);
+		Logger::queueError(Logger::Error, "Could not open %s",*fileName);
 		return ExpressionValue();
 	}
 
-	file.setPos(pos);
+	file.seekg(pos);
+	if (file.eof() || file.fail())
+	{
+		Logger::queueError(Logger::Error, "Invalid offset 0x%08X of %s", pos, *fileName);
+		return ExpressionValue();
+	}
 
 	T buffer;
-	if (file.read(&buffer, sizeof(T)) != sizeof(T))
+	file.read(reinterpret_cast<char*>(&buffer), sizeof(T));
+
+	if (file.fail())
 	{
-		Logger::queueError(Logger::Error, L"Failed to read %d byte(s) from offset 0x%08X of %s", sizeof(T), pos, *fileName);
+		Logger::queueError(Logger::Error, "Failed to read %d byte(s) from offset 0x%08X of %s", sizeof(T), pos, *fileName);
 		return ExpressionValue();
 	}
 
 	return ExpressionValue((int64_t) buffer);
 }
 
-ExpressionValue expFuncReadAscii(const std::wstring& funcName, const std::vector<ExpressionValue>& parameters)
+ExpressionValue expFuncReadAscii(const Identifier &funcName, const std::vector<ExpressionValue>& parameters)
 {
-	const std::wstring* fileName;
+	const StringLiteral* fileName;
 	int64_t start;
 	int64_t length;
 
@@ -18659,53 +23913,76 @@ ExpressionValue expFuncReadAscii(const std::wstring& funcName, const std::vector
 	GET_OPTIONAL_PARAM(parameters,1,start,0);
 	GET_OPTIONAL_PARAM(parameters,2,length,0);
 
-	std::wstring fullName = getFullPathName(*fileName);
+	auto fullName = getFullPathName(fileName->path());
 
-	int64_t totalSize = fileSize(fullName);
+	std::error_code error;
+	int64_t totalSize = static_cast<int64_t>(fs::file_size(fullName, error));
+
 	if (length == 0 || start+length > totalSize)
 		length = totalSize-start;
 
-	BinaryFile file;
-	if (file.open(fullName,BinaryFile::Read) == false)
+	fs::ifstream file(fullName, fs::ifstream::in | fs::ifstream::binary);
+	if (!file.is_open())
 	{
-		Logger::queueError(Logger::Error,L"Could not open %s",fileName);
+		Logger::queueError(Logger::Error, "Could not open %s", *fileName);
 		return ExpressionValue();
 	}
 
-	file.setPos((long)start);
-
-	unsigned char* buffer = new unsigned char[length];
-	file.read(buffer,(size_t)length);
-
-	std::wstring result;
-	for (size_t i = 0; i < (size_t) length; i++)
+	file.seekg(start);
+	if (file.eof() || file.fail())
 	{
-		if (buffer[i] < 0x20 || buffer[i] > 0x7F)
+		Logger::queueError(Logger::Error, "Invalid offset 0x%08X of %s", start, *fileName);
+		return ExpressionValue();
+	}
+
+	char buffer[1024];
+	bool stringTerminated = false;
+	std::string result;
+
+	for (int64_t progress = 0; !stringTerminated && progress < length; progress += (int64_t) sizeof(buffer))
+	{
+		auto bytesToRead = (size_t) std::min((int64_t) sizeof(buffer), length - progress);
+
+		file.read(buffer, bytesToRead);
+		if (file.fail())
 		{
-			Logger::printError(Logger::Warning,L"%s: Non-ASCII character",funcName);
+			Logger::queueError(Logger::Error, "Failed to read %d byte(s) from offset 0x%08X of %s", bytesToRead, *fileName);
 			return ExpressionValue();
 		}
 
-		result += (wchar_t) buffer[i];
-	}
+		for (std::streamsize i = 0; i < file.gcount(); i++)
+		{
+			if (buffer[i] == 0x00)
+			{
+				stringTerminated = true;
+				break;
+			}
 
-	delete[] buffer;
+			if (buffer[i] < 0x20)
+			{
+				Logger::printError(Logger::Warning, "%s: Non-ASCII character", funcName);
+				return ExpressionValue();
+			}
+
+			result += buffer[i];
+		}
+	}
 
 	return ExpressionValue(result);
 }
 
-ExpressionValue expLabelFuncDefined(const std::wstring &funcName, const std::vector<std::shared_ptr<Label>> &parameters)
+ExpressionValue expLabelFuncDefined(const Identifier &funcName, const std::vector<std::shared_ptr<Label>> &parameters)
 {
 	if (parameters.empty() || !parameters.front())
 	{
-		Logger::queueError(Logger::Error,L"%s: Invalid parameters", funcName);
+		Logger::queueError(Logger::Error, "%s: Invalid parameters", funcName);
 		return ExpressionValue();
 	}
 
 	return ExpressionValue(parameters.front()->isDefined() ? INT64_C(1) : INT64_C(0));
 }
 
-ExpressionValue expLabelFuncOrg(const std::wstring& funcName, const std::vector<std::shared_ptr<Label>>& parameters)
+ExpressionValue expLabelFuncOrg(const Identifier &funcName, const std::vector<std::shared_ptr<Label>>& parameters)
 {
 	// return physical address of label parameter
 	if (parameters.size())
@@ -18719,13 +23996,13 @@ ExpressionValue expLabelFuncOrg(const std::wstring& funcName, const std::vector<
 
 	if(!g_fileManager->hasOpenFile())
 	{
-		Logger::queueError(Logger::Error,L"%s: no file opened", funcName);
+		Logger::queueError(Logger::Error, "%s: no file opened", funcName);
 		return ExpressionValue();
 	}
 	return ExpressionValue(g_fileManager->getVirtualAddress());
 }
 
-ExpressionValue expLabelFuncOrga(const std::wstring& funcName, const std::vector<std::shared_ptr<Label>>& parameters)
+ExpressionValue expLabelFuncOrga(const Identifier &funcName, const std::vector<std::shared_ptr<Label>>& parameters)
 {
 	// return physical address of label parameter
 	if (parameters.size())
@@ -18736,7 +24013,7 @@ ExpressionValue expLabelFuncOrga(const std::wstring& funcName, const std::vector
 
 		if (!label->hasPhysicalValue())
 		{
-			Logger::queueError(Logger::Error,L"%s: parameter %s has no physical address", funcName, label->getName() );
+			Logger::queueError(Logger::Error, "%s: parameter %s has no physical address", funcName, label->getName());
 			return ExpressionValue();
 		}
 
@@ -18746,13 +24023,13 @@ ExpressionValue expLabelFuncOrga(const std::wstring& funcName, const std::vector
 	// return current physical address otherwise
 	if(!g_fileManager->hasOpenFile())
 	{
-		Logger::queueError(Logger::Error,L"%s: no file opened", funcName);
+		Logger::queueError(Logger::Error, "%s: no file opened", funcName);
 		return ExpressionValue();
 	}
 	return ExpressionValue(g_fileManager->getPhysicalAddress());
 }
 
-ExpressionValue expLabelFuncHeaderSize(const std::wstring& funcName, const std::vector<std::shared_ptr<Label>>& parameters)
+ExpressionValue expLabelFuncHeaderSize(const Identifier &funcName, const std::vector<std::shared_ptr<Label>>& parameters)
 {
 	// return difference between physical and virtual address of label parameter
 	if (parameters.size())
@@ -18763,7 +24040,7 @@ ExpressionValue expLabelFuncHeaderSize(const std::wstring& funcName, const std::
 
 		if (!label->hasPhysicalValue())
 		{
-			Logger::queueError(Logger::Error,L"%s: parameter %s has no physical address", funcName, label->getName() );
+			Logger::queueError(Logger::Error, "%s: parameter %s has no physical address", funcName, label->getName());
 			return ExpressionValue();
 		}
 
@@ -18772,60 +24049,74 @@ ExpressionValue expLabelFuncHeaderSize(const std::wstring& funcName, const std::
 
 	if(!g_fileManager->hasOpenFile())
 	{
-		Logger::queueError(Logger::Error,L"headersize: no file opened");
+		Logger::queueError(Logger::Error, "headersize: no file opened");
 		return ExpressionValue();
 	}
 	return ExpressionValue(g_fileManager->getHeaderSize());
 }
 
-const ExpressionFunctionMap expressionFunctions = {
-	{ L"version",		{ &expFuncVersion,			0,	0,	ExpFuncSafety::Safe } },
-	{ L"endianness",	{ &expFuncEndianness,		0,	0,	ExpFuncSafety::Unsafe } },
-	{ L"outputname",	{ &expFuncOutputName,		0,	0,	ExpFuncSafety::Unsafe } },
-	{ L"fileexists",	{ &expFuncFileExists,		1,	1,	ExpFuncSafety::Safe } },
-	{ L"filesize",		{ &expFuncFileSize,			1,	1,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"tostring",		{ &expFuncToString,			1,	1,	ExpFuncSafety::Safe } },
-	{ L"tohex",			{ &expFuncToHex,			1,	2,	ExpFuncSafety::Safe } },
+const ExpressionFunctionEntry expressionFunctions[] = {
+	{ "version",       &expFuncVersion,        0, 0,   ExpFuncSafety::Safe},
+	{ "endianness",    &expFuncEndianness,     0, 0,   ExpFuncSafety::Unsafe},
+	{ "outputname",    &expFuncOutputName,     0, 0,   ExpFuncSafety::Unsafe},
+	{ "fileexists",    &expFuncFileExists,     1, 1,   ExpFuncSafety::Safe},
+	{ "filesize",      &expFuncFileSize,       1, 1,   ExpFuncSafety::ConditionalUnsafe},
+	{ "tostring",      &expFuncToString,       1, 1,   ExpFuncSafety::Safe},
+	{ "tohex",         &expFuncToHex,          1, 2,   ExpFuncSafety::Safe},
 
-	{ L"int",			{ &expFuncInt,				1,	1,	ExpFuncSafety::Safe } },
-	{ L"float",			{ &expFuncFloat,			1,	1,	ExpFuncSafety::Safe } },
-	{ L"frac",			{ &expFuncFrac,				1,	1,	ExpFuncSafety::Safe } },
-	{ L"abs",			{ &expFuncAbs,				1,	1,	ExpFuncSafety::Safe } },
-	{ L"round",			{ &expFuncRound,			1,	1,	ExpFuncSafety::Safe } },
-	{ L"min",			{ &expFuncMin,				1,	std::numeric_limits<size_t>::max(),	ExpFuncSafety::Safe } },
-	{ L"max",			{ &expFuncMax,				1,	std::numeric_limits<size_t>::max(),	ExpFuncSafety::Safe } },
+	{ "int",           &expFuncInt,            1, 1,   ExpFuncSafety::Safe},
+	{ "float",         &expFuncFloat,          1, 1,   ExpFuncSafety::Safe},
+	{ "frac",          &expFuncFrac,           1, 1,   ExpFuncSafety::Safe},
+	{ "abs",           &expFuncAbs,            1, 1,   ExpFuncSafety::Safe},
+	{ "round",         &expFuncRound,          1, 1,   ExpFuncSafety::Safe},
+	{ "min",           &expFuncMin,            1, 256, ExpFuncSafety::Safe},
+	{ "max",           &expFuncMax,            1, 256, ExpFuncSafety::Safe},
 
-	{ L"strlen",		{ &expFuncStrlen,			1,	1,	ExpFuncSafety::Safe } },
-	{ L"substr",		{ &expFuncSubstr,			3,	3,	ExpFuncSafety::Safe } },
+	{ "strlen",        &expFuncStrlen,         1, 1,   ExpFuncSafety::Safe},
+	{ "substr",        &expFuncSubstr,         3, 3,   ExpFuncSafety::Safe},
 #if ARMIPS_REGEXP
-	{ L"regex_match",	{ &expFuncRegExMatch,		2,	2,	ExpFuncSafety::Safe } },
-	{ L"regex_search",	{ &expFuncRegExSearch,		2,	2,	ExpFuncSafety::Safe } },
-	{ L"regex_extract",	{ &expFuncRegExExtract,		2,	3,	ExpFuncSafety::Safe } },
+	{ "regex_match",   &expFuncRegExMatch,     2, 2,   ExpFuncSafety::Safe},
+	{ "regex_search",  &expFuncRegExSearch,    2, 2,   ExpFuncSafety::Safe},
+	{ "regex_extract", &expFuncRegExExtract,   2, 3,   ExpFuncSafety::Safe},
 #endif
-	{ L"find",			{ &expFuncFind,				2,	3,	ExpFuncSafety::Safe } },
-	{ L"rfind",			{ &expFuncRFind,			2,	3,	ExpFuncSafety::Safe } },
+	{ "find",          &expFuncFind,           2, 3,   ExpFuncSafety::Safe},
+	{ "rfind",         &expFuncRFind,          2, 3,   ExpFuncSafety::Safe},
 
-	{ L"readbyte",		{ &expFuncRead<uint8_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"readu8",		{ &expFuncRead<uint8_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"readu16",		{ &expFuncRead<uint16_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"readu32",		{ &expFuncRead<uint32_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"readu64",		{ &expFuncRead<uint64_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"reads8",		{ &expFuncRead<int8_t>,		1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"reads16",		{ &expFuncRead<int16_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"reads32",		{ &expFuncRead<int32_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"reads64",		{ &expFuncRead<int64_t>,	1,	2,	ExpFuncSafety::ConditionalUnsafe } },
-	{ L"readascii",		{ &expFuncReadAscii,		1,	3,	ExpFuncSafety::ConditionalUnsafe } },
+	{ "readbyte",      &expFuncRead<uint8_t>,  1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "readu8",        &expFuncRead<uint8_t>,  1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "readu16",       &expFuncRead<uint16_t>, 1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "readu32",       &expFuncRead<uint32_t>, 1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "readu64",       &expFuncRead<uint64_t>, 1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "reads8",        &expFuncRead<int8_t>,   1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "reads16",       &expFuncRead<int16_t>,  1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "reads32",       &expFuncRead<int32_t>,  1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "reads64",       &expFuncRead<int64_t>,  1, 2,   ExpFuncSafety::ConditionalUnsafe},
+	{ "readascii",     &expFuncReadAscii,      1, 3,   ExpFuncSafety::ConditionalUnsafe},
 };
 
-extern const ExpressionLabelFunctionMap expressionLabelFunctions =
+const ExpressionLabelFunctionEntry expressionLabelFunctions[] =
 {
-	{ L"defined",    { &expLabelFuncDefined,      1, 1, ExpFuncSafety::Unsafe } },
-	{ L"org",        { &expLabelFuncOrg,          0, 1, ExpFuncSafety::Unsafe } },
-	{ L"orga",       { &expLabelFuncOrga,         0, 1, ExpFuncSafety::Unsafe } },
-	{ L"headersize", { &expLabelFuncHeaderSize,   0, 1, ExpFuncSafety::Unsafe } },
+	{ "defined",    &expLabelFuncDefined,      1, 1, ExpFuncSafety::Unsafe},
+	{ "org",        &expLabelFuncOrg,          0, 1, ExpFuncSafety::Unsafe},
+	{ "orga",       &expLabelFuncOrga,         0, 1, ExpFuncSafety::Unsafe},
+	{ "headersize", &expLabelFuncHeaderSize,   0, 1, ExpFuncSafety::Unsafe},
 };
+
+void registerExpressionFunctions(ExpressionFunctionHandler &handler)
+{
+	for (const auto &func : expressionFunctions)
+	{
+		handler.addFunction(Identifier(func.name), func.function, func.minParams, func.maxParams, func.safety);
+	}
+
+	for (const auto &func : expressionLabelFunctions)
+	{
+		handler.addLabelFunction(Identifier(func.name), func.function, func.minParams, func.maxParams, func.safety);
+	}
+}
 
 // file: Core/FileManager.cpp
+
 
 inline uint64_t swapEndianness64(uint64_t value)
 {
@@ -18845,164 +24136,164 @@ inline uint16_t swapEndianness16(uint16_t value)
 }
 
 
-GenericAssemblerFile::GenericAssemblerFile(const std::wstring& fileName, int64_t headerSize, bool overwrite)
+GenericAssemblerFile::GenericAssemblerFile(const fs::path& fileName, int64_t headerSize, bool overwrite)
+	: originalHeaderSize(headerSize), headerSize(headerSize), fileName(fileName)
 {
-	this->fileName = fileName;
-	this->headerSize = headerSize;
-	this->originalHeaderSize = headerSize;
 	this->seekPhysical(0);
-	mode = overwrite == true ? Create : Open;
+	mode = overwrite ? Create : Open;
 }
 
-GenericAssemblerFile::GenericAssemblerFile(const std::wstring& fileName, const std::wstring& originalFileName, int64_t headerSize)
+GenericAssemblerFile::GenericAssemblerFile(const fs::path& fileName, const fs::path& originalFileName, int64_t headerSize)
+	: originalHeaderSize(headerSize), headerSize(headerSize), fileName(fileName), originalName(originalFileName)
 {
-	this->fileName = fileName;
-	this->originalName = originalFileName;
-	this->headerSize = headerSize;
-	this->originalHeaderSize = headerSize;
 	this->seekPhysical(0);
 	mode = Copy;
 }
 
 bool GenericAssemblerFile::open(bool onlyCheck)
 {
+	std::error_code errorCode;
+
 	headerSize = originalHeaderSize;
 	virtualAddress = headerSize;
 
-	if (onlyCheck == false)
+	auto flagsOpenExisting = fs::ofstream::in | fs::ofstream::out | fs::ofstream::binary;
+	auto flagsOverwrite = fs::ofstream::out | fs::ofstream::trunc | fs::ofstream::binary;
+
+	if (!onlyCheck)
 	{
 		// actually open the file
-		bool success;
 		switch (mode)
 		{
 		case Open:
-			success = handle.open(fileName,BinaryFile::ReadWrite);
-			if (success == false)
+			stream.open(fileName, flagsOpenExisting);
+			if (!stream.is_open())
 			{
-				Logger::printError(Logger::FatalError,L"Could not open file %s",fileName);
+				Logger::printError(Logger::FatalError, "Could not open file %s",fileName.u8string());
 				return false;
 			}
 			return true;
 
 		case Create:
-			success = handle.open(fileName,BinaryFile::Write);
-			if (success == false)
+			stream.open(fileName, flagsOverwrite);
+			if (!stream.is_open())
 			{
-				Logger::printError(Logger::FatalError,L"Could not create file %s",fileName);
+				Logger::printError(Logger::FatalError, "Could not create file %s",fileName.u8string());
 				return false;
 			}
 			return true;
 
 		case Copy:
-			success = copyFile(originalName,fileName);
-			if (success == false)
+			if (!fs::copy_file(originalName, fileName, fs::copy_options::overwrite_existing, errorCode))
 			{
-				Logger::printError(Logger::FatalError,L"Could not copy file %s",originalName);
+				Logger::printError(Logger::FatalError, "Could not copy file %s",originalName.u8string());
 				return false;
 			}
 
-			success = handle.open(fileName,BinaryFile::ReadWrite);
-			if (success == false)
+			stream.open(fileName, flagsOpenExisting);
+			if (!stream.is_open())
 			{
-				Logger::printError(Logger::FatalError,L"Could not create file %s",fileName);
+				Logger::printError(Logger::FatalError, "Could not create file %s",fileName.u8string());
 				return false;
 			}
 			return true;
-
-		default:
-			return false;
 		}
 	}
 
 	// else only check if it can be done, don't actually do it permanently
-	bool success, exists;
-	BinaryFile temp;
+	bool exists = false;
+	fs::ofstream temp;
 	switch (mode)
 	{
 	case Open:
-		success = temp.open(fileName,BinaryFile::ReadWrite);
-		if (success == false)
+		temp.open(fileName, flagsOpenExisting);
+		if (!temp.is_open())
 		{
-			Logger::queueError(Logger::FatalError,L"Could not open file %s",fileName);
+			Logger::queueError(Logger::FatalError, "Could not open file %s",fileName.u8string());
 			return false;
 		}
 		temp.close();
 		return true;
 
 	case Create:
-		// if it exists, check if you can open it with read/write access
-		// otherwise open it with write access and remove it afterwards
-		exists = fileExists(fileName);
-		success = temp.open(fileName,exists ? BinaryFile::ReadWrite : BinaryFile::Write);
-		if (success == false)
+		// open file with writee access. if it didn't exist before, remove it afterwards
+		exists = fs::exists(fileName);
+
+		temp.open(fileName, exists ? flagsOpenExisting : flagsOverwrite);
+		if (!temp.is_open())
 		{
-			Logger::queueError(Logger::FatalError,L"Could not create file %s",fileName);
+			Logger::queueError(Logger::FatalError, "Could not create file %s",fileName.u8string());
 			return false;
 		}
 		temp.close();
 
-		if (exists == false)
-			deleteFile(fileName);
+		if (!exists)
+			fs::remove(fileName, errorCode);
 
 		return true;
 
 	case Copy:
 		// check original file
-		success = temp.open(originalName,BinaryFile::ReadWrite);
-		if (success == false)
+		temp.open(originalName, flagsOpenExisting);
+		if (!temp.is_open())
 		{
-			Logger::queueError(Logger::FatalError,L"Could not open file %s",originalName);
+			Logger::queueError(Logger::FatalError, "Could not copy file %s",originalName.u8string());
 			return false;
 		}
 		temp.close();
+
+		// Check input and output are not the same
+		std::error_code ec;
+		if (fs::equivalent(originalName, fileName, ec))
+		{
+			Logger::queueError(Logger::FatalError, "Could not copy file %s", originalName.u8string());
+			return false;
+		}
 
 		// check new file, same as create
-		exists = fileExists(fileName);
-		success = temp.open(fileName,exists ? BinaryFile::ReadWrite : BinaryFile::Write);
-		if (success == false)
+		exists = fs::exists(fileName);
+
+		temp.open(fileName, exists ? flagsOpenExisting : flagsOverwrite);
+		if (!temp.is_open())
 		{
-			Logger::queueError(Logger::FatalError,L"Could not create file %s",fileName);
+			Logger::queueError(Logger::FatalError, "Could not create file %s",fileName.u8string());
 			return false;
 		}
 		temp.close();
 
-		if (exists == false)
-			deleteFile(fileName);
-
+		if (!exists)
+			fs::remove(fileName, errorCode);
 		return true;
-
-	default:
-		return false;
-	};
+	}
 
 	return false;
 }
 
 bool GenericAssemblerFile::write(void* data, size_t length)
 {
-	if (isOpen() == false)
+	if (!isOpen())
 		return false;
 
-	size_t len = handle.write(data,length);
-	virtualAddress += len;
-	return len == length;
+	stream.write(reinterpret_cast<const char *>( data ), length);
+	virtualAddress += length;
+	return !stream.fail();
 }
 
 bool GenericAssemblerFile::seekVirtual(int64_t virtualAddress)
 {
 	if (virtualAddress - headerSize < 0)
 	{
-		Logger::queueError(Logger::Error,L"Seeking to virtual address with negative physical address");
+		Logger::queueError(Logger::Error, "Seeking to virtual address with negative physical address");
 		return false;
 	}
 	if (virtualAddress < 0)
-		Logger::queueError(Logger::Warning,L"Seeking to negative virtual address");
+		Logger::queueError(Logger::Warning, "Seeking to negative virtual address");
 
 	this->virtualAddress = virtualAddress;
 	int64_t physicalAddress = virtualAddress-headerSize;
 
 	if (isOpen())
-		handle.setPos((long)physicalAddress);
+		stream.seekp(physicalAddress);
 
 	return true;
 }
@@ -19011,16 +24302,16 @@ bool GenericAssemblerFile::seekPhysical(int64_t physicalAddress)
 {
 	if (physicalAddress < 0)
 	{
-		Logger::queueError(Logger::Error,L"Seeking to negative physical address");
+		Logger::queueError(Logger::Error, "Seeking to negative physical address");
 		return false;
 	}
 	if (physicalAddress + headerSize < 0)
-		Logger::queueError(Logger::Warning,L"Seeking to physical address with negative virtual address");
+		Logger::queueError(Logger::Warning, "Seeking to physical address with negative virtual address");
 
 	virtualAddress = physicalAddress+headerSize;
 
 	if (isOpen())
-		handle.setPos((long)physicalAddress);
+		stream.seekp(physicalAddress);
 
 	return true;
 }
@@ -19045,15 +24336,12 @@ FileManager::FileManager()
 	else if (u.i == 0xAABBCCDD)
 		ownEndianness = Endianness::Little;
 	else
-		Logger::printError(Logger::Error,L"Running on unknown endianness");
+		Logger::printError(Logger::Error, "Running on unknown endianness");
 
 	reset();
 }
 
-FileManager::~FileManager()
-{
-
-}
+FileManager::~FileManager() = default;
 
 void FileManager::reset()
 {
@@ -19065,7 +24353,7 @@ bool FileManager::checkActiveFile()
 {
 	if (activeFile == nullptr)
 	{
-		Logger::queueError(Logger::Error,L"No file opened");
+		Logger::queueError(Logger::Error, "No file opened");
 		return false;
 	}
 	return true;
@@ -19075,11 +24363,11 @@ bool FileManager::openFile(std::shared_ptr<AssemblerFile> file, bool onlyCheck)
 {
 	if (activeFile != nullptr)
 	{
-		Logger::queueError(Logger::Warning,L"File not closed before opening a new one");
+		Logger::queueError(Logger::Warning, "File not closed before opening a new one");
 		activeFile->close();
 	}
 
-	activeFile = file;
+	activeFile = std::move(file);
 	return activeFile->open(onlyCheck);
 }
 
@@ -19092,7 +24380,7 @@ void FileManager::closeFile()
 {
 	if (activeFile == nullptr)
 	{
-		Logger::queueError(Logger::Warning,L"No file opened");
+		Logger::queueError(Logger::Warning, "No file opened");
 		return;
 	}
 
@@ -19102,12 +24390,12 @@ void FileManager::closeFile()
 
 bool FileManager::write(void* data, size_t length)
 {
-	if (checkActiveFile() == false)
+	if (!checkActiveFile())
 		return false;
 
-	if (activeFile->isOpen() == false)
+	if (!activeFile->isOpen())
 	{
-		Logger::queueError(Logger::Error,L"No file opened");
+		Logger::queueError(Logger::Error, "No file opened");
 		return false;
 	}
 
@@ -19166,7 +24454,7 @@ int64_t FileManager::getHeaderSize()
 
 bool FileManager::seekVirtual(int64_t virtualAddress)
 {
-	if (checkActiveFile() == false)
+	if (!checkActiveFile())
 		return false;
 
 	bool result = activeFile->seekVirtual(virtualAddress);
@@ -19182,58 +24470,65 @@ bool FileManager::seekVirtual(int64_t virtualAddress)
 
 bool FileManager::seekPhysical(int64_t virtualAddress)
 {
-	if (checkActiveFile() == false)
+	if (!checkActiveFile())
 		return false;
 	return activeFile->seekPhysical(virtualAddress);
 }
 
 bool FileManager::advanceMemory(size_t bytes)
 {
-	if (checkActiveFile() == false)
+	if (!checkActiveFile())
 		return false;
 
 	int64_t pos = activeFile->getVirtualAddress();
 	return activeFile->seekVirtual(pos+bytes);
 }
 
+int64_t FileManager::getOpenFileID()
+{
+	if (!checkActiveFile())
+		return 0;
+
+	static_assert(sizeof(int64_t) >= sizeof(intptr_t), "Assumes pointers are <= 64 bit");
+	return (int64_t)(intptr_t)activeFile.get();
+}
+
 // file: Core/Misc.cpp
+
+
 #include <iostream>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 std::vector<Logger::QueueEntry> Logger::queue;
-std::vector<std::wstring> Logger::errors;
+std::vector<std::string> Logger::errors;
 bool Logger::error = false;
 bool Logger::fatalError = false;
 bool Logger::errorOnWarning = false;
 bool Logger::silent = false;
 int Logger::suppressLevel = 0;
 
-std::wstring Logger::formatError(ErrorType type, const wchar_t* text)
+std::string Logger::formatError(ErrorType type, const char* text)
 {
-	std::wstring position;
+	std::string position;
 
-	if (Global.memoryMode == false && Global.FileInfo.FileList.size() > 0)
+	if (!Global.memoryMode && Global.fileList.size() > 0)
 	{
-		std::wstring& fileName = Global.FileInfo.FileList[Global.FileInfo.FileNum];
-		position = formatString(L"%s(%d) ",fileName,Global.FileInfo.LineNumber);
+		const auto& fileName = Global.fileList.relativeString(Global.FileInfo.FileNum);
+		position = tfm::format("%s(%d) ", fileName, Global.FileInfo.LineNumber);
 	}
 
 	switch (type)
 	{
 	case Warning:
-		return formatString(L"%swarning: %s",position,text);
+		return tfm::format("%swarning: %s",position,text);
 	case Error:
-		return formatString(L"%serror: %s",position,text);
+		return tfm::format("%serror: %s",position,text);
 	case FatalError:
-		return formatString(L"%sfatal error: %s",position,text);
+		return tfm::format("%sfatal error: %s",position,text);
 	case Notice:
-		return formatString(L"%snotice: %s",position,text);
+		return tfm::format("%snotice: %s",position,text);
 	}
 
-	return L"";
+	return "";
 }
 
 void Logger::setFlags(ErrorType type)
@@ -19266,50 +24561,28 @@ void Logger::clear()
 	silent = false;
 }
 
-void Logger::printLine(const std::wstring& text)
-{
-	if (suppressLevel)
-		return;
-
-	std::wcout << text << std::endl;
-
-#if defined(_MSC_VER) && defined(_DEBUG)
-	OutputDebugStringW(text.c_str());
-	OutputDebugStringW(L"\n");
-#endif
-}
-
-void Logger::printLine(const std::string& text)
+void Logger::printLine(std::string_view text)
 {
 	if (suppressLevel)
 		return;
 
 	std::cout << text << std::endl;
-
-#if defined(_MSC_VER) && defined(_DEBUG)
-	OutputDebugStringA(text.c_str());
-	OutputDebugStringA("\n");
-#endif
 }
 
-void Logger::print(const std::wstring& text)
+void Logger::print(std::string_view text)
 {
 	if (suppressLevel)
 		return;
 
-	std::wcout << text;
-
-#if defined(_MSC_VER) && defined(_DEBUG)
-	OutputDebugStringW(text.c_str());
-#endif
+	std::cout << text;
 }
 
-void Logger::printError(ErrorType type, const std::wstring& text)
+void Logger::printError(ErrorType type, const std::string_view text)
 {
 	if (suppressLevel)
 		return;
 
-	std::wstring errorText = formatError(type,text.c_str());
+	std::string errorText = formatError(type,text.data());
 	errors.push_back(errorText);
 
 	if (!silent)
@@ -19318,39 +24591,14 @@ void Logger::printError(ErrorType type, const std::wstring& text)
 	setFlags(type);
 }
 
-void Logger::printError(ErrorType type, const wchar_t* text)
-{
-	if (suppressLevel)
-		return;
-
-	std::wstring errorText = formatError(type,text);
-	errors.push_back(errorText);
-
-	if (!silent)
-		printLine(errorText);
-
-	setFlags(type);
-}
-
-void Logger::queueError(ErrorType type, const std::wstring& text)
+void Logger::queueError(ErrorType type, const std::string_view text)
 {
 	if (suppressLevel)
 		return;
 
 	QueueEntry entry;
 	entry.type = type;
-	entry.text = formatError(type,text.c_str());
-	queue.push_back(entry);
-}
-
-void Logger::queueError(ErrorType type, const wchar_t* text)
-{
-	if (suppressLevel)
-		return;
-
-	QueueEntry entry;
-	entry.type = type;
-	entry.text = formatError(type,text);
+	entry.text = formatError(type,text.data());
 	queue.push_back(entry);
 }
 
@@ -19369,26 +24617,26 @@ void Logger::printQueue()
 
 void TempData::start()
 {
-	if (file.getFileName().empty() == false)
+	if (!file.getFileName().empty())
 	{
-		if (file.open(TextFile::Write) == false)
+		if (!file.open(TextFile::Write))
 		{
-			Logger::printError(Logger::Error,L"Could not open temp file %s.",file.getFileName());
+			Logger::printError(Logger::Error,"Could not open temp file %s.",file.getFileName().u8string());
 			return;
 		}
 
-		size_t fileCount = Global.FileInfo.FileList.size();
+		size_t fileCount = Global.fileList.size();
 		size_t lineCount = Global.FileInfo.TotalLineCount;
 		size_t labelCount = Global.symbolTable.getLabelCount();
 		size_t equCount = Global.symbolTable.getEquationCount();
 
-		file.writeFormat(L"; %d %S included\n",fileCount,fileCount == 1 ? "file" : "files");
-		file.writeFormat(L"; %d %S\n",lineCount,lineCount == 1 ? "line" : "lines");
-		file.writeFormat(L"; %d %S\n",labelCount,labelCount == 1 ? "label" : "labels");
-		file.writeFormat(L"; %d %S\n\n",equCount,equCount == 1 ? "equation" : "equations");
+		file.writeFormat("; %d %S included\n",fileCount,fileCount == 1 ? "file" : "files");
+		file.writeFormat("; %d %S\n",lineCount,lineCount == 1 ? "line" : "lines");
+		file.writeFormat("; %d %S\n",labelCount,labelCount == 1 ? "label" : "labels");
+		file.writeFormat("; %d %S\n\n",equCount,equCount == 1 ? "equation" : "equations");
 		for (size_t i = 0; i < fileCount; i++)
 		{
-			file.writeFormat(L"; %S\n",Global.FileInfo.FileList[i]);
+			file.writeFormat("; %S\n",Global.fileList.string(int(i)));
 		}
 		file.writeLine("");
 	}
@@ -19400,24 +24648,26 @@ void TempData::end()
 		file.close();
 }
 
-void TempData::writeLine(int64_t memoryAddress, const std::wstring& text)
+void TempData::writeLine(int64_t memoryAddress, const std::string& text)
 {
 	if (file.isOpen())
 	{
-		wchar_t hexbuf[10] = {0};
-		swprintf(hexbuf, 10, L"%08X ", (int32_t) memoryAddress);
-		std::wstring str = hexbuf + text;
+		char hexbuf[10] = {0};
+		snprintf(hexbuf, 10, "%08X ", (int32_t) memoryAddress);
+		std::string str = hexbuf + text;
 		while (str.size() < 70)
 			str += ' ';
 
-		str += formatString(L"; %S line %d",
-			Global.FileInfo.FileList[Global.FileInfo.FileNum],Global.FileInfo.LineNumber);
+		str += tfm::format("; %S line %d",
+			Global.fileList.string(Global.FileInfo.FileNum),Global.FileInfo.LineNumber);
 
 		file.writeLine(str);
 	}
 }
 
 // file: Core/SymbolData.cpp
+
+
 #include <algorithm>
 
 SymbolData::SymbolData()
@@ -19442,7 +24692,7 @@ void SymbolData::clear()
 struct NocashSymEntry
 {
 	int64_t address;
-	std::wstring text;
+	std::string text;
 
 	bool operator<(const NocashSymEntry& other) const
 	{
@@ -19479,12 +24729,12 @@ void SymbolData::writeNocashSym()
 			entry.address = sym.address;
 
 			if (size != 0 && nocashSymVersion >= 2)
-				entry.text = formatString(L"%s,%08X",sym.name,size);
+				entry.text = tfm::format("%s,%08X",sym.name,size);
 			else
 				entry.text = sym.name;
 
 			if (nocashSymVersion == 1)
-				std::transform(entry.text.begin(), entry.text.end(), entry.text.begin(), ::towlower);
+				std::transform(entry.text.begin(), entry.text.end(), entry.text.begin(), ::tolower);
 
 			entries.push_back(entry);
 		}
@@ -19497,19 +24747,19 @@ void SymbolData::writeNocashSym()
 			switch (data.type)
 			{
 			case Data8:
-				entry.text = formatString(L".byt:%04X",data.size);
+				entry.text = tfm::format(".byt:%04X",data.size);
 				break;
 			case Data16:
-				entry.text = formatString(L".wrd:%04X",data.size);
+				entry.text = tfm::format(".wrd:%04X",data.size);
 				break;
 			case Data32:
-				entry.text = formatString(L".dbl:%04X",data.size);
+				entry.text = tfm::format(".dbl:%04X",data.size);
 				break;
 			case Data64:
-				entry.text = formatString(L".dbl:%04X",data.size);
+				entry.text = tfm::format(".dbl:%04X",data.size);
 				break;
 			case DataAscii:
-				entry.text = formatString(L".asc:%04X",data.size);
+				entry.text = tfm::format(".asc:%04X",data.size);
 				break;
 			}
 
@@ -19520,16 +24770,16 @@ void SymbolData::writeNocashSym()
 	std::sort(entries.begin(),entries.end());
 
 	TextFile file;
-	if (file.open(nocashSymFileName,TextFile::Write,TextFile::ASCII) == false)
+	if (!file.open(nocashSymFileName,TextFile::Write,TextFile::ASCII))
 	{
-		Logger::printError(Logger::Error,L"Could not open sym file %s.",file.getFileName());
+		Logger::printError(Logger::Error, "Could not open sym file %s.",file.getFileName().u8string());
 		return;
 	}
-	file.writeLine(L"00000000 0");
+	file.writeLine("00000000 0");
 
 	for (size_t i = 0; i < entries.size(); i++)
 	{
-		file.writeFormat(L"%08X %s\n",entries[i].address,entries[i].text);
+		file.writeFormat("%08X %s\n",entries[i].address,entries[i].text);
 	}
 
 	file.write("\x1A");
@@ -19541,7 +24791,7 @@ void SymbolData::write()
 	writeNocashSym();
 }
 
-void SymbolData::addLabel(int64_t memoryAddress, const std::wstring& name)
+void SymbolData::addLabel(int64_t memoryAddress, const std::string& name)
 {
 	if (!enabled)
 		return;
@@ -19571,7 +24821,7 @@ void SymbolData::addData(int64_t address, size_t size, DataType type)
 	modules[currentModule].data.insert(data);
 }
 
-size_t SymbolData::addFileName(const std::wstring& fileName)
+size_t SymbolData::addFileName(const std::string& fileName)
 {
 	for (size_t i = 0; i < files.size(); i++)
 	{
@@ -19589,7 +24839,7 @@ void SymbolData::startModule(AssemblerFile* file)
 	{
 		if (modules[i].file == file)
 		{
-			currentModule = i;
+			currentModule = (int)i;
 			return;
 		}
 	}
@@ -19597,7 +24847,7 @@ void SymbolData::startModule(AssemblerFile* file)
 	SymDataModule module;
 	module.file = file;
 	modules.push_back(module);
-	currentModule = modules.size()-1;
+	currentModule = (int)modules.size()-1;
 }
 
 void SymbolData::endModule(AssemblerFile* file)
@@ -19607,13 +24857,13 @@ void SymbolData::endModule(AssemblerFile* file)
 
 	if (currentModule == 0)
 	{
-		Logger::printError(Logger::Error,L"No module opened");
+		Logger::printError(Logger::Error, "No module opened");
 		return;
 	}
 
 	if (currentFunction != -1)
 	{
-		Logger::printError(Logger::Error,L"Module closed before function end");
+		Logger::printError(Logger::Error, "Module closed before function end");
 		currentFunction = -1;
 	}
 
@@ -19627,7 +24877,7 @@ void SymbolData::startFunction(int64_t address)
 		endFunction(address);
 	}
 
-	currentFunction = modules[currentModule].functions.size();
+	currentFunction = (int)modules[currentModule].functions.size();
 
 	SymDataFunction func;
 	func.address = address;
@@ -19639,7 +24889,7 @@ void SymbolData::endFunction(int64_t address)
 {
 	if (currentFunction == -1)
 	{
-		Logger::printError(Logger::Error,L"Not inside a function");
+		Logger::printError(Logger::Error, "Not inside a function");
 		return;
 	}
 
@@ -19650,7 +24900,9 @@ void SymbolData::endFunction(int64_t address)
 
 // file: Core/SymbolTable.cpp
 
-const wchar_t validSymbolCharacters[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.";
+
+
+const char validSymbolCharacters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.";
 
 bool operator<(SymbolKey const& lhs, SymbolKey const& rhs)
 {
@@ -19660,6 +24912,14 @@ bool operator<(SymbolKey const& lhs, SymbolKey const& rhs)
 		return lhs.section < rhs.section;
 	return lhs.name.compare(rhs.name) < 0;
 }
+
+
+Label::Label(const Identifier &name) :
+	name(name),
+	originalName(name)
+{
+}
+
 
 SymbolTable::SymbolTable()
 {
@@ -19679,11 +24939,11 @@ void SymbolTable::clear()
 	uniqueCount = 0;
 }
 
-void SymbolTable::setFileSectionValues(const std::wstring& symbol, int& file, int& section)
+void SymbolTable::setFileSectionValues(const Identifier& symbol, int& file, int& section)
 {
-	if (symbol[0] == '@')
+	if (symbol.string()[0] == '@')
 	{
-		if (symbol[1] != '@')
+		if (symbol.string()[1] != '@')
 		{
 			// static label, @. the section doesn't matter
 			section = -1;
@@ -19697,9 +24957,9 @@ void SymbolTable::setFileSectionValues(const std::wstring& symbol, int& file, in
 	}
 }
 
-std::shared_ptr<Label> SymbolTable::getLabel(const std::wstring& symbol, int file, int section)
+std::shared_ptr<Label> SymbolTable::getLabel(const Identifier& symbol, int file, int section)
 {
-	if (isValidSymbolName(symbol) == false)
+	if (!isValidSymbolName(symbol))
 		return nullptr;
 
 	int actualSection = section;
@@ -19713,7 +24973,7 @@ std::shared_ptr<Label> SymbolTable::getLabel(const std::wstring& symbol, int fil
 		SymbolInfo value = { LabelSymbol, labels.size() };
 		symbols[key] = value;
 
-		std::shared_ptr<Label> result = std::make_shared<Label>(symbol);
+		std::shared_ptr<Label> result = std::make_shared<Label>(Identifier(symbol));
 		if (section == actualSection)
 			result->setSection(section);			// local, set section of parent
 		else
@@ -19729,9 +24989,9 @@ std::shared_ptr<Label> SymbolTable::getLabel(const std::wstring& symbol, int fil
 	return labels[it->second.index];
 }
 
-bool SymbolTable::symbolExists(const std::wstring& symbol, int file, int section)
+bool SymbolTable::symbolExists(const Identifier& symbol, int file, int section)
 {
-	if (isValidSymbolName(symbol) == false)
+	if (!isValidSymbolName(symbol))
 		return false;
 
 	setFileSectionValues(symbol,file,section);
@@ -19741,35 +25001,37 @@ bool SymbolTable::symbolExists(const std::wstring& symbol, int file, int section
 	return it != symbols.end();
 }
 
-bool SymbolTable::isValidSymbolName(const std::wstring& symbol)
+bool SymbolTable::isValidSymbolName(const Identifier& symbol)
 {
-	size_t size = symbol.size();
+	const auto& string = symbol.string();
+
+	size_t size = string.size();
 	size_t start = 0;
 
 	// don't match empty names
-	if (size == 0 || symbol.compare(L"@") == 0 || symbol.compare(L"@@") == 0)
+	if (size == 0 || string.compare("@") == 0 || string.compare("@@") == 0)
 		return false;
 
-	if (symbol[0] == '@')
+	if (string[0] == '@')
 	{
 		start++;
-		if (size > 1 && symbol[1] == '@')
+		if (size > 1 && string[1] == '@')
 			start++;
 	}
 
-	if (symbol[start] >= '0' && symbol[start] <= '9')
+	if (string[start] >= '0' && string[start] <= '9')
 		return false;
 
 	for (size_t i = start; i < size; i++)
 	{
-		if (wcschr(validSymbolCharacters,symbol[i]) == nullptr)
+		if (strchr(validSymbolCharacters,string[i]) == nullptr)
 			return false;
 	}
 
 	return true;
 }
 
-bool SymbolTable::isValidSymbolCharacter(wchar_t character, bool first)
+bool SymbolTable::isValidSymbolCharacter(char character, bool first)
 {
 	if ((character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z')) return true;
 	if (!first && (character >= '0' && character <= '9')) return true;
@@ -19778,9 +25040,9 @@ bool SymbolTable::isValidSymbolCharacter(wchar_t character, bool first)
 	return false;
 }
 
-bool SymbolTable::addEquation(const std::wstring& name, int file, int section, size_t referenceIndex)
+bool SymbolTable::addEquation(const Identifier& name, int file, int section, size_t referenceIndex)
 {
-	if (isValidSymbolName(name) == false)
+	if (!isValidSymbolName(name))
 		return false;
 
 	if (symbolExists(name,file,section))
@@ -19796,7 +25058,7 @@ bool SymbolTable::addEquation(const std::wstring& name, int file, int section, s
 	return true;
 }
 
-bool SymbolTable::findEquation(const std::wstring& name, int file, int section, size_t& dest)
+bool SymbolTable::findEquation(const Identifier& name, int file, int section, size_t& dest)
 {
 	setFileSectionValues(name,file,section);
 
@@ -19810,14 +25072,14 @@ bool SymbolTable::findEquation(const std::wstring& name, int file, int section, 
 }
 
 // TODO: better
-std::wstring SymbolTable::getUniqueLabelName(bool local)
+Identifier SymbolTable::getUniqueLabelName(bool local)
 {
-	std::wstring name = formatString(L"__armips_label_%08x__",uniqueCount++);
+	std::string name = tfm::format("__armips_label_%08x__",uniqueCount++);
 	if (local)
-		name = L"@@" + name;
+		name = "@@" + name;
 
-	generatedLabels.insert(name);
-	return name;
+	generatedLabels.insert(Identifier(name));
+	return Identifier(name);
 }
 
 void SymbolTable::addLabels(const std::vector<LabelDefinition>& labels)
@@ -19831,9 +25093,7 @@ void SymbolTable::addLabels(const std::vector<LabelDefinition>& labels)
 		if (label == nullptr)
 			continue;
 
-		label->setOriginalName(def.originalName);
-
-		if (isLocalSymbol(def.name) == false)
+		if (!isLocalSymbol(def.name))
 			Global.Section++;
 
 		label->setDefined(true);
@@ -19848,7 +25108,7 @@ int SymbolTable::findSection(int64_t address)
 
 	for (auto& lab: labels)
 	{
-		int diff = address-lab->getValue();
+		int64_t diff = address-lab->getValue();
 		if (diff >= 0 && diff < smallestDiff)
 		{
 			smallestDiff = diff;
@@ -19856,53 +25116,123 @@ int SymbolTable::findSection(int64_t address)
 		}
 	}
 
-	return smallestBefore;
+	return int(smallestBefore);
+}
+
+// file: Core/Types.cpp
+
+Identifier::Identifier(std::string name) :
+	_name(std::move(name))
+{
+}
+
+std::ostream &operator<<(std::ostream &output, const Identifier &identifier)
+{
+	output << identifier.string();
+	return output;
+}
+
+StringLiteral::StringLiteral(std::string value) :
+	_value(std::move(value))
+{
+}
+
+StringLiteral StringLiteral::operator+(const StringLiteral &other) const
+{
+	return StringLiteral(_value + other._value);
+}
+
+bool StringLiteral::operator==(const StringLiteral &other) const
+{
+	return _value == other._value;
+}
+
+bool StringLiteral::operator!=(const StringLiteral &other) const
+{
+	return _value != other._value;
+}
+
+bool StringLiteral::operator<(const StringLiteral &other) const
+{
+	return _value < other._value;
+}
+
+bool StringLiteral::operator<=(const StringLiteral &other) const
+{
+	return _value <= other._value;
+}
+
+bool StringLiteral::operator>(const StringLiteral &other) const
+{
+	return _value > other._value;
+}
+
+bool StringLiteral::operator>=(const StringLiteral &other) const
+{
+	return _value >= other._value;
+}
+
+std::ostream &operator<<(std::ostream &output, const StringLiteral &value)
+{
+	output << value.string();
+	return output;
 }
 
 // file: Main/main.cpp
 
-int wmain(int argc, wchar_t* argv[])
-{
-	std::setlocale(LC_CTYPE,"");
+#include <clocale>
 
-#ifdef ARMIPS_TESTS
-	std::wstring name;
-
-	if (argc < 2)
-		return !runTests(L"Tests", argv[0]);
-	else
-		return !runTests(argv[1], argv[0]);
+#ifdef _WIN32
+#include <Windows.h>
 #endif
 
-	StringList arguments = getStringListFromArray(argv,argc);
-
-	return runFromCommandLine(arguments);
+namespace
+{
+	int run(const std::vector<std::string> &arguments)
+	{
+#ifdef ARMIPS_TESTS
+		if (arguments.size() < 2)
+			return !runTests("Tests", arguments[0]);
+		else
+			return !runTests(arguments[1], arguments[0]);
+#endif
+		return runFromCommandLine(arguments);
+	}
 }
 
-#ifndef _WIN32
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[])
+{
+	std::setlocale(LC_CTYPE, "");
 
+	// enable ANSI escape code processing
+	HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+	DWORD consoleMode = 0;
+	GetConsoleMode(stdoutHandle , &consoleMode);
+	consoleMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+	SetConsoleMode(stdoutHandle, consoleMode);
+
+	// process parameters
+	std::vector<std::string> arguments;
+	for (int i = 0; i < argc; ++i)
+	{
+		arguments.push_back(convertWStringToUtf8(argv[i]));
+	}
+
+	return run(arguments);
+}
+#else
 int main(int argc, char* argv[])
 {
-	// convert input to wstring
-	std::vector<std::wstring> wideStrings;
+	std::setlocale(LC_CTYPE, "");
+
+	std::vector<std::string> arguments;
 	for (int i = 0; i < argc; i++)
 	{
-		std::wstring str = convertUtf8ToWString(argv[i]);
-		wideStrings.push_back(str);
+		arguments.push_back(argv[i]);
 	}
 
-	// create argv replacement
-	wchar_t** wargv = new wchar_t*[argc];
-	for (int i = 0; i < argc; i++)
-	{
-		wargv[i] = (wchar_t*) wideStrings[i].c_str();
-	}
-
-	int result = wmain(argc,wargv);
-
-	delete[] wargv;
-	return result;
+	return run(arguments);
 }
-
 #endif
 

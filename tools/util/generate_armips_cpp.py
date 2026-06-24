@@ -128,6 +128,12 @@ file_header =  \
 // To simplify compilation, all files have been concatenated into one.
 // MIPS only, ARM is not included.
 // Requires C++17 or later.
+
+// WARNING FOR N64:
+// Unless you 8-byte align (instead of the usual 4-byte) the address of a double float (f64) or bare float literals (0.0 instead of 0.0f),
+// GCC, IDO CC will emit LDC1/SDC1 for doubles which requre 8-byte alignment.
+// If this code is injected at a 4-byte aligned address, it WILL crash.
+
 #define ARMIPS_USE_STD_FILESYSTEM
 #include <filesystem>
 #include <fstream>
@@ -162,14 +168,33 @@ def cat_file(fout, fin_name):
         fout.write('\n')
 
 PATCHES = [
-    # Fix forced 16-byte alignment on .importobj injection for N64 ROMs.
-    # alignSize(1) is a no-op when the section already declares sh_addralign,
-    # so each section's own alignment is still respected.
+    # Force 4-byte alignment on .importobj injection for N64 ROMs,
+    # and update p_align in the segment header to match.
     (
         '\t// align segment to alignment of first section\n'
-        '\tint align = std::max<int>(sections[0]->getAlignment(),16);',
-        '\t// align segment to alignment of first section (minimum 1, i.e. no forced alignment)\n'
-        '\tint align = std::max<int>(sections[0]->getAlignment(),1);',
+        '\tint align = std::max<int>(sections[0]->getAlignment(),16);\n'
+        '\toutput.alignSize(align);',
+        '\t// align segment to 4 bytes for N64 ROM injection\n'
+        '\toutput.alignSize(4);\n'
+        '\theader.p_align = 4;',
+    ),
+    # Also clamp each section's sh_addralign to 4, otherwise sections
+    # with sh_addralign=16 will still pad to 16 when written.
+    (
+        '\tif (header.sh_addralign != (unsigned) -1)\n'
+        '\t\toutput.alignSize(header.sh_addralign);',
+        '\tif (header.sh_addralign != (unsigned) -1)\n'
+        '\t{\n'
+        '\t\tElf32_Word secAlign = std::min(header.sh_addralign, (Elf32_Word)4);\n'
+        '\t\tif (secAlign < 1) secAlign = 1;\n'
+        '\t\toutput.alignSize(secAlign);\n'
+        '\t\theader.sh_addralign = secAlign;\n'
+        '\t}',
+    ),
+    # One more... make it hardcode alignment of 4 instead
+    (
+        '\twhile (relocationAddress % section->getAlignment())\n',
+        '\twhile (relocationAddress % 4)\n'
     ),
 ]
 

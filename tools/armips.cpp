@@ -3,6 +3,12 @@
 // To simplify compilation, all files have been concatenated into one.
 // MIPS only, ARM is not included.
 // Requires C++17 or later.
+
+// WARNING FOR N64:
+// Unless you 8-byte align (instead of the usual 4-byte) the address of a double float (f64) or bare float literals (0.0 instead of 0.0f),
+// GCC, IDO CC will emit LDC1/SDC1 for doubles which requre 8-byte alignment.
+// If this code is injected at a 4-byte aligned address, it WILL crash.
+
 #define ARMIPS_USE_STD_FILESYSTEM
 #include <filesystem>
 #include <fstream>
@@ -20738,7 +20744,12 @@ void ElfSection::writeData(ByteArray& output)
 	}
 
 	if (header.sh_addralign != (unsigned) -1)
-		output.alignSize(header.sh_addralign);
+	{
+		Elf32_Word secAlign = std::min(header.sh_addralign, (Elf32_Word)4);
+		if (secAlign < 1) secAlign = 1;
+		output.alignSize(secAlign);
+		header.sh_addralign = secAlign;
+	}
 	header.sh_offset = (Elf32_Off) output.size();
 	output.append(data);
 }
@@ -20804,9 +20815,9 @@ void ElfSegment::writeData(ByteArray& output)
 		return;
 	}
 
-	// align segment to alignment of first section (minimum 1, i.e. no forced alignment)
-	int align = std::max<int>(sections[0]->getAlignment(),1);
-	output.alignSize(align);
+	// align segment to 4 bytes for N64 ROM injection
+	output.alignSize(4);
+	header.p_align = 4;
 
 	header.p_offset = (Elf32_Off) output.size();
 	for (int i = 0; i < (int)sections.size(); i++)
@@ -21507,7 +21518,7 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 			relocationOffsets[index] = section->getAddress();
 
 		} else {
-			while (relocationAddress % section->getAlignment())
+			while (relocationAddress % 4)
 				relocationAddress++;
 
 			if (entry.label != nullptr)

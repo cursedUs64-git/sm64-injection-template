@@ -126,7 +126,6 @@ file_header =  \
 """// armips assembler v0.11
 // https://github.com/Kingcom/armips/
 // To simplify compilation, all files have been concatenated into one.
-// MIPS only, ARM is not included.
 // Requires C++17 or later.
 
 // WARNING FOR N64:
@@ -168,8 +167,338 @@ def cat_file(fout, fin_name):
         fout.write('\n')
 
 PATCHES = [
+    # validateOverlap only keys on (fileID, virtualAddress), so dynamic segments
+    # (same headersize/RAM window, different physical ROM offset, never resident
+    # at the same time) trigger false "areas overlap" warnings. Track the physical
+    # position alongside the virtual one and only warn when both actually overlap.
+    (
+        '\tstruct Usage\n'
+        '\t{\n'
+        '\t\tint64_t space;\n'
+        '\t\tint64_t usage;\n'
+        '\t\tbool usesFill;\n'
+        '\t\tbool shared;\n'
+        '\t};\n',
+        '\tstruct Usage\n'
+        '\t{\n'
+        '\t\tint64_t space;\n'
+        '\t\tint64_t usage;\n'
+        '\t\tbool usesFill;\n'
+        '\t\tbool shared;\n'
+        '\t\tint64_t physicalPosition;\n'
+        '\t};\n',
+    ),
+    (
+        '\tstatic void setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared);\n',
+        '\tstatic void setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared, int64_t physicalPosition);\n',
+    ),
+    (
+        'void Allocations::setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared)\n'
+        '{\n'
+        '\tKey key{ fileID, position };\n'
+        '\tallocations[key] = Usage{ space, usage, usesFill, shared };\n'
+        '}\n',
+        'void Allocations::setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared, int64_t physicalPosition)\n'
+        '{\n'
+        '\tKey key{ fileID, position };\n'
+        '\tallocations[key] = Usage{ space, usage, usesFill, shared, physicalPosition };\n'
+        '}\n',
+    ),
+    (
+        'void Allocations::validateOverlap()\n'
+        '{\n'
+        '\t// An easy mistake to make is a "subarea" where the parent area fills, and erases the subarea.\n'
+        '\t// Let\'s detect any sort of area overlap and report a warning.\n'
+        '\tKey lastKey{ -1, -1 };\n'
+        '\tint64_t lastEndPosition = -1;\n'
+        '\tUsage lastUsage{};\n'
+        '\n'
+        '\tfor (auto it : allocations) {\n'
+        '\t\tif (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition) {\n'
+        '\t\t\t// First, the obvious: does the content overlap?\n'
+        '\t\t\tif (it.first.position < lastKey.position + lastUsage.usage)\n'
+        '\t\t\t\tLogger::queueError(Logger::Warning, "Content of areas %08llX and %08llx overlap", lastKey.position, it.first.position);\n'
+        '\t\t\t// Next question, does the earlier one fill?\n'
+        '\t\t\telse if (it.second.usesFill && lastUsage.usesFill)\n'
+        '\t\t\t\tLogger::queueError(Logger::Warning, "Areas %08llX and %08llx overlap and both fill", lastKey.position, it.first.position);\n'
+        '\n'
+        '\t\t\t// If the new area ends before the last, keep it as the last.\n'
+        '\t\t\tif (lastEndPosition > it.first.position + it.second.space) {\n'
+        '\t\t\t\t// But update the usage to the max position.\n'
+        '\t\t\t\tint64_t newUsageEnd = it.first.position + it.second.usage + getSubAreaUsage(it.first);\n'
+        '\t\t\t\tlastUsage.usage = newUsageEnd - lastKey.position;\n'
+        '\t\t\t\tcontinue;\n'
+        '\t\t\t}\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tlastKey = it.first;\n'
+        '\t\tlastUsage = it.second;\n'
+        '\t\tlastUsage.usage += getSubAreaUsage(lastKey);\n'
+        '\t\tlastEndPosition = it.first.position + it.second.space;\n'
+        '\t}\n'
+        '}\n',
+        'void Allocations::validateOverlap()\n'
+        '{\n'
+        '\t// An easy mistake to make is a "subarea" where the parent area fills, and erases the subarea.\n'
+        '\t// Let\'s detect any sort of area overlap and report a warning.\n'
+        '\t// Areas can share virtual (RAM) address space on purpose. Dynamic/overlay\n'
+        '\t// segments reuse the same headersize/RAM window at different physical ROM\n'
+        '\t// offsets and are never resident at the same time. Only warn if the physical\n'
+        '\t// byte ranges actually collide.\n'
+        '\tKey lastKey{ -1, -1 };\n'
+        '\tint64_t lastEndPosition = -1;\n'
+        '\tUsage lastUsage{};\n'
+        '\n'
+        '\tfor (auto it : allocations) {\n'
+        '\t\tif (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition) {\n'
+        '\t\t\tint64_t lastPhysEnd = lastUsage.physicalPosition + lastUsage.usage;\n'
+        '\t\t\tint64_t newPhysEnd = it.second.physicalPosition + it.second.usage;\n'
+        '\t\t\tbool physicalOverlap = it.second.physicalPosition < lastPhysEnd && lastUsage.physicalPosition < newPhysEnd;\n'
+        '\n'
+        '\t\t\tif (physicalOverlap) {\n'
+        '\t\t\t\t// First, the obvious: does the content overlap?\n'
+        '\t\t\t\tif (it.first.position < lastKey.position + lastUsage.usage)\n'
+        '\t\t\t\t\tLogger::queueError(Logger::Warning, "Content of areas %08llX and %08llx overlap", lastKey.position, it.first.position);\n'
+        '\t\t\t\t// Next question, does the earlier one fill?\n'
+        '\t\t\t\telse if (it.second.usesFill && lastUsage.usesFill)\n'
+        '\t\t\t\t\tLogger::queueError(Logger::Warning, "Areas %08llX and %08llx overlap and both fill", lastKey.position, it.first.position);\n'
+        '\t\t\t}\n'
+        '\n'
+        '\t\t\t// If the new area ends before the last, keep it as the last.\n'
+        '\t\t\tif (lastEndPosition > it.first.position + it.second.space) {\n'
+        '\t\t\t\t// But update the usage to the max position.\n'
+        '\t\t\t\tint64_t newUsageEnd = it.first.position + it.second.usage + getSubAreaUsage(it.first);\n'
+        '\t\t\t\tlastUsage.usage = newUsageEnd - lastKey.position;\n'
+        '\t\t\t\tcontinue;\n'
+        '\t\t\t}\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tlastKey = it.first;\n'
+        '\t\tlastUsage = it.second;\n'
+        '\t\tlastUsage.usage += getSubAreaUsage(lastKey);\n'
+        '\t\tlastEndPosition = it.first.position + it.second.space;\n'
+        '\t}\n'
+        '}\n',
+    ),
+    (
+        'private:\n'
+        '\tbool shared;\n'
+        '\tint64_t position = 0;\n'
+        '\tExpression sizeExpression;\n'
+        '\tint64_t areaSize = 0;\n'
+        '\tint64_t contentSize = 0;\n'
+        '\tExpression fillExpression;\n'
+        '\tint8_t fillValue = 0;\n'
+        '\tint64_t fileID = 0;\n'
+        '\tExpression positionExpression;\n'
+        '\tstd::unique_ptr<CAssemblerCommand> content;\n'
+        '};\n',
+        'private:\n'
+        '\tbool shared;\n'
+        '\tint64_t position = 0;\n'
+        '\tint64_t physicalPosition = 0;\n'
+        '\tExpression sizeExpression;\n'
+        '\tint64_t areaSize = 0;\n'
+        '\tint64_t contentSize = 0;\n'
+        '\tExpression fillExpression;\n'
+        '\tint8_t fillValue = 0;\n'
+        '\tint64_t fileID = 0;\n'
+        '\tExpression positionExpression;\n'
+        '\tstd::unique_ptr<CAssemblerCommand> content;\n'
+        '};\n',
+    ),
+    (
+        '\tif (positionExpression.isLoaded())\n'
+        '\t{\n'
+        '\t\tif (!positionExpression.evaluateInteger(position))\n'
+        '\t\t{\n'
+        '\t\t\tLogger::queueError(Logger::Error, "Invalid position expression");\n'
+        '\t\t\treturn false;\n'
+        '\t\t}\n'
+        '\t\tArchitecture::current().NextSection();\n'
+        '\t\tg_fileManager->seekVirtual(position);\n'
+        '\t}\n'
+        '\telse\n'
+        '\t\tposition = g_fileManager->getVirtualAddress();\n',
+        '\tif (positionExpression.isLoaded())\n'
+        '\t{\n'
+        '\t\tif (!positionExpression.evaluateInteger(position))\n'
+        '\t\t{\n'
+        '\t\t\tLogger::queueError(Logger::Error, "Invalid position expression");\n'
+        '\t\t\treturn false;\n'
+        '\t\t}\n'
+        '\t\tArchitecture::current().NextSection();\n'
+        '\t\tg_fileManager->seekVirtual(position);\n'
+        '\t}\n'
+        '\telse\n'
+        '\t\tposition = g_fileManager->getVirtualAddress();\n'
+        '\tphysicalPosition = g_fileManager->getPhysicalAddress();\n',
+    ),
+    (
+        'void Allocations::collectAreaStats(AllocationStats &stats)\n'
+        '{\n'
+        '\t// Need to work out overlaps.\n'
+        '\tKey lastKey{ -1, -1 };\n'
+        '\tint64_t lastEndPosition = -1;\n'
+        '\tUsage lastUsage{};\n'
+        '\n'
+        '\tauto applyUsage = [&stats](int64_t position, const Usage &usage)\n'
+        '\t{\n'
+        '\t\tif (usage.space > stats.largestSize)\n'
+        '\t\t{\n'
+        '\t\t\tstats.largestPosition = position;\n'
+        '\t\t\tstats.largestSize = usage.space;\n'
+        '\t\t\tstats.largestUsage = usage.usage;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tif (usage.space - usage.usage > stats.largestFreeSize - stats.largestFreeUsage)\n'
+        '\t\t{\n'
+        '\t\t\tstats.largestFreePosition = position;\n'
+        '\t\t\tstats.largestFreeSize = usage.space;\n'
+        '\t\t\tstats.largestFreeUsage = usage.usage;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\t// We assume overlaps agree on sharing, hopefully...\n'
+        '\t\tif (usage.shared && usage.space - usage.usage > stats.sharedFreeSize - stats.sharedFreeUsage)\n'
+        '\t\t{\n'
+        '\t\t\tstats.sharedFreePosition = position;\n'
+        '\t\t\tstats.sharedFreeSize = usage.space;\n'
+        '\t\t\tstats.sharedFreeUsage = usage.usage;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tstats.totalSize += usage.space;\n'
+        '\t\tstats.totalUsage += usage.usage;\n'
+        '\t\tif (usage.shared)\n'
+        '\t\t{\n'
+        '\t\t\tstats.sharedSize += usage.space;\n'
+        '\t\t\tstats.sharedUsage += usage.usage;\n'
+        '\t\t}\n'
+        '\t};\n'
+        '\n'
+        '\tfor (auto it : allocations)\n'
+        '\t{\n'
+        '\t\tif (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition)\n'
+        '\t\t{\n'
+        '\t\t\t// Overlap, merge.\n'
+        '\t\t\tint64_t lastUsageEnd = lastKey.position + lastUsage.usage;\n'
+        '\t\t\tint64_t newUsageEnd = it.first.position + it.second.usage + getSubAreaUsage(it.first);\n'
+        '\n'
+        '\t\t\tif (lastUsageEnd >= it.first.position)\n'
+        '\t\t\t\tlastUsage.usage += newUsageEnd - lastUsageEnd;\n'
+        '\t\t\telse\n'
+        '\t\t\t\tlastUsage.usage += it.second.usage + getSubAreaUsage(it.first);\n'
+        '\n'
+        '\t\t\tlastEndPosition = it.first.position + it.second.space;\n'
+        '\t\t\tlastUsage.space = lastEndPosition - lastKey.position;\n'
+        '\n'
+        '\t\t\tcontinue;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tif (lastKey.position != -1)\n'
+        '\t\t\tapplyUsage(lastKey.position, lastUsage);\n'
+        '\n'
+        '\t\tlastKey = it.first;\n'
+        '\t\tlastUsage = it.second;\n'
+        '\t\tlastUsage.usage += getSubAreaUsage(lastKey);\n'
+        '\t\tlastEndPosition = it.first.position + it.second.space;\n'
+        '\t}\n'
+        '\n'
+        '\tif (lastKey.position != -1)\n'
+        '\t\tapplyUsage(lastKey.position, lastUsage);\n'
+        '}\n',
+        'void Allocations::collectAreaStats(AllocationStats &stats)\n'
+        '{\n'
+        '\t// Need to work out overlaps.\n'
+        '\tKey lastKey{ -1, -1 };\n'
+        '\tint64_t lastEndPosition = -1;\n'
+        '\tUsage lastUsage{};\n'
+        '\n'
+        '\tauto applyUsage = [&stats](int64_t position, const Usage &usage)\n'
+        '\t{\n'
+        '\t\tif (usage.space > stats.largestSize)\n'
+        '\t\t{\n'
+        '\t\t\tstats.largestPosition = position;\n'
+        '\t\t\tstats.largestSize = usage.space;\n'
+        '\t\t\tstats.largestUsage = usage.usage;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tif (usage.space - usage.usage > stats.largestFreeSize - stats.largestFreeUsage)\n'
+        '\t\t{\n'
+        '\t\t\tstats.largestFreePosition = position;\n'
+        '\t\t\tstats.largestFreeSize = usage.space;\n'
+        '\t\t\tstats.largestFreeUsage = usage.usage;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\t// We assume overlaps agree on sharing, hopefully...\n'
+        '\t\tif (usage.shared && usage.space - usage.usage > stats.sharedFreeSize - stats.sharedFreeUsage)\n'
+        '\t\t{\n'
+        '\t\t\tstats.sharedFreePosition = position;\n'
+        '\t\t\tstats.sharedFreeSize = usage.space;\n'
+        '\t\t\tstats.sharedFreeUsage = usage.usage;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tstats.totalSize += usage.space;\n'
+        '\t\tstats.totalUsage += usage.usage;\n'
+        '\t\tif (usage.shared)\n'
+        '\t\t{\n'
+        '\t\t\tstats.sharedSize += usage.space;\n'
+        '\t\t\tstats.sharedUsage += usage.usage;\n'
+        '\t\t}\n'
+        '\t};\n'
+        '\n'
+        '\tfor (auto it : allocations)\n'
+        '\t{\n'
+        '\t\tbool virtualOverlap = it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition;\n'
+        '\t\tbool physicalOverlap = false;\n'
+        '\t\tif (virtualOverlap)\n'
+        '\t\t{\n'
+        '\t\t\tint64_t lastPhysEnd = lastUsage.physicalPosition + lastUsage.usage;\n'
+        '\t\t\tint64_t newPhysEnd = it.second.physicalPosition + it.second.usage;\n'
+        '\t\t\tphysicalOverlap = it.second.physicalPosition < lastPhysEnd && lastUsage.physicalPosition < newPhysEnd;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\t// Only merge dynamic/overlay areas that share RAM space if they also share\n'
+        '\t\t// physical ROM bytes, otherwise they are independent areas for stats purposes.\n'
+        '\t\tif (virtualOverlap && physicalOverlap)\n'
+        '\t\t{\n'
+        '\t\t\t// Overlap, merge.\n'
+        '\t\t\tint64_t lastUsageEnd = lastKey.position + lastUsage.usage;\n'
+        '\t\t\tint64_t newUsageEnd = it.first.position + it.second.usage + getSubAreaUsage(it.first);\n'
+        '\n'
+        '\t\t\tif (lastUsageEnd >= it.first.position)\n'
+        '\t\t\t\tlastUsage.usage += newUsageEnd - lastUsageEnd;\n'
+        '\t\t\telse\n'
+        '\t\t\t\tlastUsage.usage += it.second.usage + getSubAreaUsage(it.first);\n'
+        '\n'
+        '\t\t\tlastEndPosition = it.first.position + it.second.space;\n'
+        '\t\t\tlastUsage.space = lastEndPosition - lastKey.position;\n'
+        '\n'
+        '\t\t\tcontinue;\n'
+        '\t\t}\n'
+        '\n'
+        '\t\tif (lastKey.position != -1)\n'
+        '\t\t\tapplyUsage(lastKey.position, lastUsage);\n'
+        '\n'
+        '\t\tlastKey = it.first;\n'
+        '\t\tlastUsage = it.second;\n'
+        '\t\tlastUsage.usage += getSubAreaUsage(lastKey);\n'
+        '\t\tlastEndPosition = it.first.position + it.second.space;\n'
+        '\t}\n'
+        '\n'
+        '\tif (lastKey.position != -1)\n'
+        '\t\tapplyUsage(lastKey.position, lastUsage);\n'
+        '}\n',
+    ),
+    # * Update the function call for setArea
+    (
+        '\tif (areaSize != 0)\n'
+        '\t\tAllocations::setArea(fileID, position, areaSize, contentSize, fillExpression.isLoaded(), shared);\n',
+        '\tif (areaSize != 0)\n'
+        '\t\tAllocations::setArea(fileID, position, areaSize, contentSize, fillExpression.isLoaded(), shared, physicalPosition);\n',
+    ),
+
     # Force 4-byte alignment on .importobj injection for N64 ROMs,
-    # and update p_align in the segment header to match.
+    # and update p_align in the segment header to match:
     (
         '\t// align segment to alignment of first section\n'
         '\tint align = std::max<int>(sections[0]->getAlignment(),16);\n'
@@ -178,8 +507,8 @@ PATCHES = [
         '\toutput.alignSize(4);\n'
         '\theader.p_align = 4;',
     ),
-    # Also clamp each section's sh_addralign to 4, otherwise sections
-    # with sh_addralign=16 will still pad to 16 when written.
+    # * Also clamp each section's sh_addralign to 4, otherwise sections
+    #   with sh_addralign=16 will still pad to 16 when written.
     (
         '\tif (header.sh_addralign != (unsigned) -1)\n'
         '\t\toutput.alignSize(header.sh_addralign);',
@@ -191,7 +520,7 @@ PATCHES = [
         '\t\theader.sh_addralign = secAlign;\n'
         '\t}',
     ),
-    # One more... make it hardcode alignment of 4 instead
+    # * One more... make it hardcode alignment of 4 instead
     (
         '\twhile (relocationAddress % section->getAlignment())\n',
         '\twhile (relocationAddress % 4)\n'
@@ -230,4 +559,3 @@ def main():
     combine_armips(fout_name, os.path.expanduser(armips_path))
 
 main()
-

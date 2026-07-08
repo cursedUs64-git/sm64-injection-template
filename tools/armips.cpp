@@ -1,7 +1,6 @@
 // armips assembler v0.11
 // https://github.com/Kingcom/armips/
 // To simplify compilation, all files have been concatenated into one.
-// MIPS only, ARM is not included.
 // Requires C++17 or later.
 
 // WARNING FOR N64:
@@ -1236,8 +1235,9 @@ std::string convertWStringToUtf8(std::wstring_view source);
 
 bool stringToInt(const std::string& line, size_t start, size_t end, int64_t& result);
 int32_t getFloatBits(float value);
-float bitsToFloat(int32_t value);
 int64_t getDoubleBits(double value);
+uint16_t toHalfFloat(double value);
+double fromHalfFloat(uint16_t value);
 
 std::string toLowercase(const std::string& str);
 size_t replaceAll(std::string& str, const char* oldValue,const std::string& newValue);
@@ -2598,7 +2598,7 @@ class Allocations
 {
 public:
 	static void clear();
-	static void setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared);
+	static void setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared, int64_t physicalPosition);
 	static void forgetArea(int64_t fileID, int64_t position, int64_t space);
 
 	static void setPool(int64_t fileID, int64_t position, int64_t size);
@@ -2630,6 +2630,7 @@ private:
 		int64_t usage;
 		bool usesFill;
 		bool shared;
+		int64_t physicalPosition;
 	};
 
 	struct SubArea
@@ -3088,6 +3089,7 @@ public:
 private:
 	bool shared;
 	int64_t position = 0;
+	int64_t physicalPosition = 0;
 	Expression sizeExpression;
 	int64_t areaSize = 0;
 	int64_t contentSize = 0;
@@ -7785,7 +7787,7 @@ public:
 private:
 	void encodeNormal() const;
 	void encodeVfpu() const;
-	int floatToHalfFloat(int i);
+	bool immediateToHalfFloat(int &out);
 
 	bool IgnoreLoadDelay;
 	int64_t RamPos;
@@ -8174,39 +8176,23 @@ int getImmediateBits(MipsImmediateType type)
 	}
 }
 
-// http://code.google.com/p/jpcsp/source/browse/trunk/src/jpcsp/Allegrex/VfpuState.java?spec=svn3676&r=3383#1196
-int CMipsInstruction::floatToHalfFloat(int i)
+bool CMipsInstruction::immediateToHalfFloat(int &out)
 {
-	int s = ((i >> 16) & 0x00008000); // sign
-	int e = ((i >> 23) & 0x000000ff) - (127 - 15); // exponent
-	int f = ((i >> 0) & 0x007fffff); // fraction
-
-	// need to handle NaNs and Inf?
-	if (e <= 0) {
-		if (e < -10) {
-			if (s != 0) {
-				// handle -0.0
-				return 0x8000;
-			}
-			return 0;
-		}
-		f = (f | 0x00800000) >> (1 - e);
-		return s | (f >> 13);
-	} else if (e == 0xff - (127 - 15)) {
-		if (f == 0) {
-			// Inf
-			return s | 0x7c00;
-		}
-		// NAN
-		return s | 0x7fff;
+	ExpressionValue value = immediateData.primary.expression.evaluate();
+	if (value.isFloat())
+	{
+		out = toHalfFloat(value.floatValue);
+		return true;
 	}
-
-	if (e > 30) {
-		// Overflow
-		return s | 0x7c00;
+	else if (value.isInt())
+	{
+		out = toHalfFloat((double) value.intValue);
+		return true;
 	}
-
-	return s | (e << 10) | (f >> 13);
+	else
+	{
+		return false;
+	}
 }
 
 bool CMipsInstruction::Validate(const ValidateState &state)
@@ -8228,7 +8214,18 @@ bool CMipsInstruction::Validate(const ValidateState &state)
 	{
 		if (immediateData.primary.expression.isLoaded())
 		{
-			if (!immediateData.primary.expression.evaluateInteger(immediateData.primary.value))
+			bool isValidExpression;
+
+			if (immediateData.primary.type == MipsImmediateType::ImmediateHalfFloat)
+			{
+				isValidExpression = immediateToHalfFloat(immediateData.primary.value);
+			}
+			else
+			{
+				isValidExpression = immediateData.primary.expression.evaluateInteger(immediateData.primary.value);
+			}
+
+			if (!isValidExpression)
 			{
 				Logger::queueError(Logger::Error, "Invalid immediate expression");
 				return false;
@@ -8236,9 +8233,6 @@ bool CMipsInstruction::Validate(const ValidateState &state)
 
 			immediateData.primary.originalValue = immediateData.primary.value;
 		}
-
-		if (immediateData.primary.type == MipsImmediateType::ImmediateHalfFloat)
-			immediateData.primary.value = floatToHalfFloat(immediateData.primary.originalValue);
 
 		if (opcodeData.opcode.flags & MO_IMMALIGNED)	// immediate must be aligned
 		{
@@ -10430,21 +10424,27 @@ const tMipsOpcode MipsOpcodes[] = {
 //  hi |-------|-------|-------|-------|-------|-------|-------|-------|
 	{ "vadd.S",		"vd,vs,vt",	MIPS_VFPU0(0x00),			MA_PSP,		MO_VFPU },
 	{ "vsub.S",		"vd,vs,vt",	MIPS_VFPU0(0x01),			MA_PSP,		MO_VFPU },
-	{ "vsbn.S",		"vd,vs,vt",	MIPS_VFPU0(0x02),			MA_PSP,		MO_VFPU },
+	{ "vsbn.s",		"vd,vs,vt",	MIPS_VFPU0(0x02),			MA_PSP,		MO_VFPU|MO_VFPU_SINGLE },
 	{ "vdiv.S",		"vd,vs,vt",	MIPS_VFPU0(0x07),			MA_PSP,		MO_VFPU },
 
 //     31-------26-----23----------------------------------------------0
 //     |=   VFPU1|  f  |                                               |
 //     -----6-------3---------------------------------------------------
 //     |--000--|--001--|--010--|--011--|--100--|--101--|--110--|--111--|
-//     |  VMUL |  VDOT |  VSCL |  ---  |  VHDP |  VDET |  VCRS |  ---  |
+//     |  VMUL |  VDOT |  VSCL |  ---  |  VHDP |  VCRS |  VDET |  ---  |
 //     |-------|-------|-------|-------|-------|-------|-------|-------|
 	{ "vmul.S",		"vd,vs,vt",	MIPS_VFPU1(0),				MA_PSP,		MO_VFPU },
-	{ "vdot.S",		"vd,vs,vt",	MIPS_VFPU1(1),				MA_PSP,		MO_VFPU },
-	{ "vscl.S",		"vd,vs,vt",	MIPS_VFPU1(2),				MA_PSP,		MO_VFPU },
-	{ "vhdp.S",		"vd,vs,vt",	MIPS_VFPU1(4),				MA_PSP,		MO_VFPU },
-	{ "vdet.S",		"vd,vs,vt",	MIPS_VFPU1(5),				MA_PSP,		MO_VFPU },
-	{ "vcrs.S",		"vd,vs,vt",	MIPS_VFPU1(6),				MA_PSP,		MO_VFPU },
+	{ "vdot.p",		"vSd,vs,vt",	MIPS_VFPU1(1)|MIPS_VFPUSIZE(1),		MA_PSP,		MO_VFPU|MO_VFPU_PAIR },
+	{ "vdot.t",		"vSd,vs,vt",	MIPS_VFPU1(1)|MIPS_VFPUSIZE(2),		MA_PSP,		MO_VFPU|MO_VFPU_TRIPLE },
+	{ "vdot.q",		"vSd,vs,vt",	MIPS_VFPU1(1)|MIPS_VFPUSIZE(3),		MA_PSP,		MO_VFPU|MO_VFPU_QUAD },
+	{ "vscl.p",		"vd,vs,vSt",	MIPS_VFPU1(2)|MIPS_VFPUSIZE(1),		MA_PSP,		MO_VFPU|MO_VFPU_PAIR },
+	{ "vscl.t",		"vd,vs,vSt",	MIPS_VFPU1(2)|MIPS_VFPUSIZE(2),		MA_PSP,		MO_VFPU|MO_VFPU_TRIPLE },
+	{ "vscl.q",		"vd,vs,vSt",	MIPS_VFPU1(2)|MIPS_VFPUSIZE(3),		MA_PSP,		MO_VFPU|MO_VFPU_QUAD },
+	{ "vhdp.p",		"vSd,vs,vt",	MIPS_VFPU1(4)|MIPS_VFPUSIZE(1),		MA_PSP,		MO_VFPU|MO_VFPU_PAIR },
+	{ "vhdp.t",		"vSd,vs,vt",	MIPS_VFPU1(4)|MIPS_VFPUSIZE(2),		MA_PSP,		MO_VFPU|MO_VFPU_TRIPLE },
+	{ "vhdp.q",		"vSd,vs,vt",	MIPS_VFPU1(4)|MIPS_VFPUSIZE(3),		MA_PSP,		MO_VFPU|MO_VFPU_QUAD },
+	{ "vcrs.t",		"vd,vs,vt",		MIPS_VFPU1(5)|MIPS_VFPUSIZE(2),		MA_PSP,		MO_VFPU|MO_VFPU_TRIPLE },
+	{ "vdet.p",		"vSd,vs,vt",	MIPS_VFPU1(6)|MIPS_VFPUSIZE(1),		MA_PSP,		MO_VFPU|MO_VFPU_PAIR },
 
 //     31-------26-----23----------------------------------------------0
 //     |=   VFPU3|  f  |                                               |
@@ -10565,18 +10565,18 @@ const tMipsOpcode MipsOpcodes[] = {
 	{ "vrndf1.S",	"vd",		MIPS_VFPU4_12(0x02),		MA_PSP,		MO_VFPU },
 	{ "vrndf2.S",	"vd",		MIPS_VFPU4_12(0x03),		MA_PSP,		MO_VFPU },
 	// TODO: vsBZ?
-	{ "vf2h.S",		"vd,vs",	MIPS_VFPU4_12(0x12),		MA_PSP,		MO_VFPU },
-	{ "vh2f.S",		"vd,vs",	MIPS_VFPU4_12(0x13),		MA_PSP,		MO_VFPU },
+	{ "vf2h.S",		"vHd,vs",	MIPS_VFPU4_12(0x12),		MA_PSP,		MO_VFPU },
+	{ "vh2f.S",		"vDd,vs",	MIPS_VFPU4_12(0x13),		MA_PSP,		MO_VFPU },
 	// TODO: vsBZ?
 	{ "vlgb.S",		"vd,vs",	MIPS_VFPU4_12(0x17),		MA_PSP,		MO_VFPU },
-	{ "vuc2i.S",	"vd,vs",	MIPS_VFPU4_12(0x18),		MA_PSP,		MO_VFPU },
-	{ "vc2i.S",		"vd,vs",	MIPS_VFPU4_12(0x19),		MA_PSP,		MO_VFPU },
-	{ "vus2i.S",	"vd,vs",	MIPS_VFPU4_12(0x1a),		MA_PSP,		MO_VFPU },
-	{ "vs2i.S",		"vd,vs",	MIPS_VFPU4_12(0x1b),		MA_PSP,		MO_VFPU },
-	{ "vi2uc.S",	"vd,vs",	MIPS_VFPU4_12(0x1c),		MA_PSP,		MO_VFPU },
-	{ "vi2c.S",		"vd,vs",	MIPS_VFPU4_12(0x1d),		MA_PSP,		MO_VFPU },
-	{ "vi2us.S",	"vd,vs",	MIPS_VFPU4_12(0x1e),		MA_PSP,		MO_VFPU },
-	{ "vi2s.S",		"vd,vs",	MIPS_VFPU4_12(0x1f),		MA_PSP,		MO_VFPU },
+	{ "vuc2ifs.S",	"vQd,vs",	MIPS_VFPU4_12(0x18),		MA_PSP,		MO_VFPU },
+	{ "vc2i.S",		"vQd,vs",	MIPS_VFPU4_12(0x19),		MA_PSP,		MO_VFPU },
+	{ "vus2i.S",	"vDd,vs",	MIPS_VFPU4_12(0x1a),		MA_PSP,		MO_VFPU },
+	{ "vs2i.S",		"vDd,vs",	MIPS_VFPU4_12(0x1b),		MA_PSP,		MO_VFPU },
+	{ "vi2uc.S",	"vFd,vs",	MIPS_VFPU4_12(0x1c),		MA_PSP,		MO_VFPU },
+	{ "vi2c.S",		"vFd,vs",	MIPS_VFPU4_12(0x1d),		MA_PSP,		MO_VFPU },
+	{ "vi2us.S",	"vHd,vs",	MIPS_VFPU4_12(0x1e),		MA_PSP,		MO_VFPU },
+	{ "vi2s.S",		"vHd,vs",	MIPS_VFPU4_12(0x1f),		MA_PSP,		MO_VFPU },
 
 //     31--------------21------16--------------------------------------0
 //     |= VF4-1.3      |   rt  |                                       |
@@ -10593,8 +10593,12 @@ const tMipsOpcode MipsOpcodes[] = {
 	{ "vbfy2.S",	"vd,vs",	MIPS_VFPU4_13(0x03),		MA_PSP,		MO_VFPU },
 	{ "vocp.S",		"vd,vs",	MIPS_VFPU4_13(0x04),		MA_PSP,		MO_VFPU },
 	{ "vsocp.S",	"vd,vs",	MIPS_VFPU4_13(0x05),		MA_PSP,		MO_VFPU },
-	{ "vfad.S",		"vd,vs",	MIPS_VFPU4_13(0x06),		MA_PSP,		MO_VFPU },
-	{ "vavg.S",		"vd,vs",	MIPS_VFPU4_13(0x07),		MA_PSP,		MO_VFPU },
+	{ "vfad.p",		"vSd,vs",	MIPS_VFPU4_13(0x06)|MIPS_VFPUSIZE(1),	MA_PSP,		MO_VFPU|MO_VFPU_PAIR },
+	{ "vfad.t",		"vSd,vs",	MIPS_VFPU4_13(0x06)|MIPS_VFPUSIZE(2),	MA_PSP,		MO_VFPU|MO_VFPU_TRIPLE },
+	{ "vfad.q",		"vSd,vs",	MIPS_VFPU4_13(0x06)|MIPS_VFPUSIZE(3),	MA_PSP,		MO_VFPU|MO_VFPU_QUAD },
+	{ "vavg.p",		"vSd,vs",	MIPS_VFPU4_13(0x07)|MIPS_VFPUSIZE(1),	MA_PSP,		MO_VFPU|MO_VFPU_PAIR },
+	{ "vavg.t",		"vSd,vs",	MIPS_VFPU4_13(0x07)|MIPS_VFPUSIZE(2),	MA_PSP,		MO_VFPU|MO_VFPU_TRIPLE },
+	{ "vavg.q",		"vSd,vs",	MIPS_VFPU4_13(0x07)|MIPS_VFPUSIZE(3),	MA_PSP,		MO_VFPU|MO_VFPU_QUAD },
 	{ "vsrt3.S",	"vd,vs",	MIPS_VFPU4_13(0x08),		MA_PSP,		MO_VFPU },
 	{ "vsrt4.S",	"vd,vs",	MIPS_VFPU4_13(0x09),		MA_PSP,		MO_VFPU },
 	{ "vsgn.S",		"vd,vs",	MIPS_VFPU4_13(0x0a),		MA_PSP,		MO_VFPU },
@@ -10602,9 +10606,9 @@ const tMipsOpcode MipsOpcodes[] = {
 	{ "vmtv.S",		"vs,i7",	MIPS_VFPU4_13(0x11)|0x00,	MA_PSP,		MO_VFPU },
 	{ "vmfvc.S",	"vs,i7",	MIPS_VFPU4_13(0x10)|0x80,	MA_PSP,		MO_VFPU },
 	{ "vmtvc.S",	"vs,i7",	MIPS_VFPU4_13(0x11)|0x80,	MA_PSP,		MO_VFPU },
-	{ "vt4444.S",	"vd,vs",	MIPS_VFPU4_13(0x19),		MA_PSP,		MO_VFPU },
-	{ "vt5551.S",	"vd,vs",	MIPS_VFPU4_13(0x1a),		MA_PSP,		MO_VFPU },
-	{ "vt5650.S",	"vd,vs",	MIPS_VFPU4_13(0x1b),		MA_PSP,		MO_VFPU },
+	{ "vt4444.S",	"vHd,vs",	MIPS_VFPU4_13(0x19),		MA_PSP,		MO_VFPU },
+	{ "vt5551.S",	"vHd,vs",	MIPS_VFPU4_13(0x1a),		MA_PSP,		MO_VFPU },
+	{ "vt5650.S",	"vHd,vs",	MIPS_VFPU4_13(0x1b),		MA_PSP,		MO_VFPU },
 
 //     31-------26-----23----------------------------------------------0
 //     |= VFPU5| f     |                                               |
@@ -11628,6 +11632,15 @@ bool MipsParser::parseVfpuVrot(Parser& parser, int& result, int size)
 
 		const Token& token = *tokenFinder;
 
+		if (token.type == TokenType::Integer)
+		{
+			if (token.getOriginalText() != "0" || isNeg)
+			{
+				return false;
+			}
+			continue;
+		}
+
 		if (token.type != TokenType::Identifier || token.identifierValue().size() != 1)
 			return false;
 
@@ -11648,10 +11661,6 @@ bool MipsParser::parseVfpuVrot(Parser& parser, int& result, int size)
 			if (isNeg || cos != -1)
 				return false;
 			cos = i;
-			break;
-		case '0':
-			if (isNeg)
-				return false;
 			break;
 		default:
 			return false;
@@ -11739,42 +11748,42 @@ bool MipsParser::parseVpfxsParameter(Parser& parser, int& result)
 	{
 		// 0
 		sequenceParser.addEntry(0, {TokenType::Integer}, {INT64_C(0)} );
-		// 1
-		sequenceParser.addEntry(1, {TokenType::Integer}, {INT64_C(1)} );
-		// 2
-		sequenceParser.addEntry(2, {TokenType::Integer}, {INT64_C(2)} );
 		// 1/2
 		sequenceParser.addEntry(3, {TokenType::Integer, TokenType::Div, TokenType::Integer}, {INT64_C(1), INT64_C(2)} );
-		// 3
-		sequenceParser.addEntry(4, {TokenType::Integer}, {INT64_C(3)} );
 		// 1/3
 		sequenceParser.addEntry(5, {TokenType::Integer, TokenType::Div, TokenType::Integer}, {INT64_C(1), INT64_C(3)} );
 		// 1/4
 		sequenceParser.addEntry(6, {TokenType::Integer, TokenType::Div, TokenType::Integer}, {INT64_C(1), INT64_C(4)} );
 		// 1/6
 		sequenceParser.addEntry(7, {TokenType::Integer, TokenType::Div, TokenType::Integer}, {INT64_C(1), INT64_C(6)} );
+		// 1
+		sequenceParser.addEntry(1, {TokenType::Integer}, {INT64_C(1)} );
+		// 2
+		sequenceParser.addEntry(2, {TokenType::Integer}, {INT64_C(2)} );
+		// 3
+		sequenceParser.addEntry(4, {TokenType::Integer}, {INT64_C(3)} );
 	}
 
-	if (parser.nextToken().type != TokenType::LBrack)
-		return false;
+	result = 0;
 
 	for (int i = 0; i < 4; i++)
 	{
-		const Token *tokenFinder = &parser.nextToken();
+		const Token *tokenFinder = &parser.peekToken();
 
 		if (i != 0)
 		{
 			if (tokenFinder->type != TokenType::Comma)
 				return false;
-
-			tokenFinder = &parser.nextToken();
+			parser.eatToken();
+			tokenFinder = &parser.peekToken();
 		}
 
 		// negation
 		if (tokenFinder->type == TokenType::Minus)
 		{
 			result |= 1 << (16+i);
-			tokenFinder = &parser.nextToken();
+			parser.eatToken();
+			tokenFinder = &parser.peekToken();
 		}
 
 		// abs
@@ -11783,25 +11792,32 @@ bool MipsParser::parseVpfxsParameter(Parser& parser, int& result)
 		{
 			result |= 1 << (8+i);
 			abs = true;
-			tokenFinder = &parser.nextToken();
+			parser.eatToken();
+			tokenFinder = &parser.peekToken();
 		}
 
 		const Token& token = *tokenFinder;
-		if (token.type != TokenType::Identifier)
-			return false;
-
-		// check for register
-		const char* reg;
-		static const char* vpfxstRegisters = "xyzw";
-		const std::string &stringValue = token.identifierValue().string();
-		if (stringValue.size() == 1 && (reg = strchr(vpfxstRegisters,stringValue[0])) != nullptr)
+		if (token.type == TokenType::Identifier)
 		{
-			result |= (reg-vpfxstRegisters) << (i*2);
+			parser.eatToken();
 
-			if (abs && parser.nextToken().type != TokenType::BitOr)
+			// check for register
+			const char* reg;
+			static const char* vpfxstRegisters = "xyzw";
+			const std::string &stringValue = token.identifierValue().string();
+			if (stringValue.size() == 1 && (reg = strchr(vpfxstRegisters,stringValue[0])) != nullptr)
+			{
+				result |= (reg-vpfxstRegisters) << (i*2);
+
+				if (abs && parser.nextToken().type != TokenType::BitOr)
+					return false;
+
+				continue;
+			}
+			else
+			{
 				return false;
-
-			continue;
+			}
 		}
 
 		// abs is invalid with constants
@@ -11819,7 +11835,7 @@ bool MipsParser::parseVpfxsParameter(Parser& parser, int& result)
 			result |= 1 << (8+i);
 	}
 
-	return parser.nextToken().type == TokenType::RBrack;
+	return true;
 }
 
 bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
@@ -11829,67 +11845,65 @@ bool MipsParser::parseVpfxdParameter(Parser& parser, int& result)
 	// initialize on first use
 	if (sequenceParser.getEntryCount() == 0)
 	{
-		// 0-1
-		sequenceParser.addEntry(1,
-			{TokenType::Integer, TokenType::Minus, TokenType::Integer},
-			{INT64_C(0), INT64_C(1)} );
-		// 0-1
+		// m
 		sequenceParser.addEntry(-1,
-			{TokenType::Integer, TokenType::Minus, TokenType::NumberString},
-			{INT64_C(0), "1m"} );
-		// 0:1
+			{TokenType::Identifier},
+			{"m"} );
+		// [0:1]
 		sequenceParser.addEntry(1,
-			{TokenType::Integer, TokenType::Colon, TokenType::Integer},
+			{TokenType::LBrack, TokenType::Integer, TokenType::Colon, TokenType::Integer, TokenType::RBrack},
 			{INT64_C(0), INT64_C(1)} );
-		// 0:1
-		sequenceParser.addEntry(-1,
-			{TokenType::Integer, TokenType::Colon, TokenType::NumberString},
-			{INT64_C(0), "1m"} );
-		// -1-1
+		// [-1:1]
 		sequenceParser.addEntry(3,
-			{TokenType::Minus, TokenType::Integer, TokenType::Minus, TokenType::Integer},
+			{TokenType::LBrack, TokenType::Minus, TokenType::Integer, TokenType::Colon, TokenType::Integer, TokenType::RBrack},
 			{INT64_C(1), INT64_C(1)} );
-		// -1-1m
-		sequenceParser.addEntry(-3,
-			{TokenType::Minus, TokenType::Integer, TokenType::Minus, TokenType::NumberString},
-			{INT64_C(1), "1m"} );
-		// -1:1
-		sequenceParser.addEntry(3,
-			{TokenType::Minus, TokenType::Integer, TokenType::Colon, TokenType::Integer},
-			{INT64_C(1), INT64_C(1)} );
-		// -1:1m
-		sequenceParser.addEntry(-3,
-			{TokenType::Minus, TokenType::Integer, TokenType::Colon, TokenType::NumberString},
-			{INT64_C(1), "1m"} );
 	}
+
+	result = 0;
 
 	for (int i = 0; i < 4; i++)
 	{
+		const Token *tokenFinder = &parser.peekToken();
+
 		if (i != 0)
 		{
-			if (parser.nextToken().type != TokenType::Comma)
-				return false;
+			CHECK(tokenFinder->type == TokenType::Comma);
+			parser.eatToken();
+			tokenFinder = &parser.peekToken();
 		}
 
-		parser.eatToken();
 
+		// empty
+		if (tokenFinder->type == TokenType::Comma)
+		{
+			CHECK(i < 3);
+			continue;
+		}
+		if (tokenFinder->type == TokenType::Separator)
+		{
+			CHECK(i == 3);
+			continue;
+		}
+
+		// mask or saturation
 		int num = 0;
 		if (!sequenceParser.parse(parser,num))
 			return false;
 
-		// m versions
 		if (num < 0)
 		{
+			// mask
 			result |= 1 << (8+i);
-			num = abs(num);
 		}
-
-		result |= num << (2*i);
+		else
+		{
+			// saturation
+			result |= num << (2*i);
+		}
 	}
 
-	return parser.nextToken().type == TokenType::RBrack;
+	return true;
 }
-
 
 bool MipsParser::decodeCop2BranchCondition(const std::string& text, size_t& pos, int& result)
 {
@@ -12113,10 +12127,11 @@ bool MipsParser::parseParameters(Parser& parser, const tMipsOpcode& opcode)
 
 	// parse parameters
 	MipsRegisterValue tempRegister;
-	int actualSize = opcodeData.vfpuSize;
 
 	while (*encoding != 0)
 	{
+		int actualSize = opcodeData.vfpuSize;
+
 		switch (*encoding++)
 		{
 		case 't':	// register
@@ -12144,10 +12159,52 @@ bool MipsParser::parseParameters(Parser& parser, const tMipsOpcode& opcode)
 			CHECK(parseCop0Register(parser,registers.grd));
 			break;
 		case 'v':	// psp vfpu reg
-			if (*encoding == 'S')
+			if (*encoding == 'S')		// Single
 			{
 				encoding++;
 				actualSize = 0;
+			}
+			else if (*encoding == 'H')	// (one-)Half
+			{
+				encoding++;
+				switch (opcodeData.vfpuSize)
+				{
+				case 1:
+					actualSize = 0;
+					break;
+				case 3:
+					actualSize = 1;
+					break;
+				default:
+					return false;
+				}
+			}
+			else if (*encoding == 'D')	// Double
+			{
+				encoding++;
+				switch (opcodeData.vfpuSize)
+				{
+				case 0:
+					actualSize = 1;
+					break;
+				case 1:
+					actualSize = 3;
+					break;
+				default:
+					return false;
+				}
+			}
+			else if (*encoding == 'F')	// (one-)Fourth
+			{
+				encoding++;
+				CHECK(opcodeData.vfpuSize == 3);
+				actualSize = 0;
+			}
+			else if (*encoding == 'Q')	// Quadruple
+			{
+				encoding++;
+				CHECK(opcodeData.vfpuSize == 0);
+				actualSize = 3;
 			}
 
 			switch (*encoding++)
@@ -12489,7 +12546,7 @@ void MipsOpcodeFormatter::handleImmediate(MipsImmediateType type, unsigned int o
 	switch (type)
 	{
 	case MipsImmediateType::ImmediateHalfFloat:
-		buffer += tfm::format("%f", bitsToFloat(originalValue));
+		buffer += tfm::format("%f", fromHalfFloat(originalValue));
 		break;
 	case MipsImmediateType::Immediate16:
 		if (!(opcodeFlags & MO_IPCR) && originalValue & 0x8000)
@@ -14287,6 +14344,7 @@ bool CDirectiveArea::Validate(const ValidateState &state)
 	}
 	else
 		position = g_fileManager->getVirtualAddress();
+	physicalPosition = g_fileManager->getPhysicalAddress();
 
 	if (!sizeExpression.evaluateInteger(areaSize))
 	{
@@ -14340,7 +14398,7 @@ bool CDirectiveArea::Validate(const ValidateState &state)
 	if ((oldFileID != fileID || oldPosition != position || areaSize == 0) && oldAreaSize != 0)
 		Allocations::forgetArea(oldFileID, oldPosition, oldAreaSize);
 	if (areaSize != 0)
-		Allocations::setArea(fileID, position, areaSize, contentSize, fillExpression.isLoaded(), shared);
+		Allocations::setArea(fileID, position, areaSize, contentSize, fillExpression.isLoaded(), shared, physicalPosition);
 
 	return result;
 }
@@ -20299,6 +20357,7 @@ TextFile::Encoding getEncodingFromString(const std::string& str)
 // file: Util/Util.cpp
 
 #include <cstring>
+#include <limits>
 #include <sstream>
 
 std::string convertUnicodeCharToUtf8(char32_t character)
@@ -20405,6 +20464,108 @@ int32_t getFloatBits(float value)
 	union { float f; int32_t i; } u;
 	u.f = value;
 	return u.i;
+}
+
+uint16_t toHalfFloat(double x)
+{
+	union
+	{
+		double value;
+		struct
+		{
+			uint64_t mantissa : 52;
+			uint64_t exponent : 11;
+			uint64_t sign : 1;
+		} parts;
+	};
+	value = x;
+
+	// per https://pspdev.github.io/vfpu-docs/#floating-point-format
+	// rounding is hardwired to nearest and subnormals flush to zero
+	if (parts.exponent == 0x7FF && parts.mantissa == 0)
+	{
+		// inf
+		return (parts.sign << 15) | (0x1F << 10);
+	}
+	else if (parts.exponent == 0x7FF && parts.mantissa != 0)
+	{
+		// NaN
+		return (parts.sign << 15) | (0x1F << 10) | 1;
+	}
+	else if (parts.exponent <= 0x3F0)
+	{
+		// 0, subnormals, numbers less than 2^-15
+		return parts.sign << 15;
+	}
+	else
+	{
+		// numbers between 2^-14 (inclusive) and 2^16 (exclusive)
+		uint16_t exponent = parts.exponent - 0x3F0;
+
+		// round to nearest (essentially `floor(x + 0.5)`)
+		uint64_t mantissa = ((parts.mantissa >> (42 - 1)) + 1) >> 1;
+		if (mantissa == 0x400) {
+			// round up to the next exponent
+			exponent += 1;
+			mantissa = 0;
+		}
+		if (exponent >= 0x1F) {
+			// round down to 65504 (greatest finite half float)
+			exponent = 0x1E;
+			mantissa = 0x3FF;
+		}
+		return (parts.sign << 15) | (exponent << 10) | mantissa;
+	}
+}
+
+double fromHalfFloat(uint16_t x)
+{
+	using nl = std::numeric_limits<double>;
+	union
+	{
+		uint16_t hValue;
+		struct
+		{
+			unsigned int mantissa : 10;
+			unsigned int exponent : 5;
+			unsigned int sign : 1;
+		} hParts;
+	};
+	hValue = x;
+
+	if (hParts.exponent == 0x1F && hParts.mantissa == 0)
+	{
+		// inf
+		return (hParts.sign ? -1.0 : 1.0) * nl::infinity();
+	}
+	else if (hParts.exponent == 0x1F && hParts.mantissa != 0)
+	{
+		// NaN
+		return nl::signaling_NaN();
+	}
+	else if (hParts.exponent == 0)
+	{
+		// 0
+		return hParts.sign ? -0.0 : 0.0;
+	}
+	else
+	{
+		// numbers between 2^-14 (inclusive) and 2^16 (exclusive)
+		union
+		{
+			double dValue;
+			struct
+			{
+				uint64_t mantissa : 52;
+				uint64_t exponent : 11;
+				uint64_t sign : 1;
+			} dParts;
+		};
+		dParts.mantissa = int64_t(hParts.mantissa) << 42;
+		dParts.exponent = hParts.exponent + 0x3F0;
+		dParts.sign = hParts.sign;
+		return dValue;
+	}
 }
 
 float bitsToFloat(int32_t value)
@@ -21512,21 +21673,14 @@ bool ElfRelocator::relocateFile(ElfRelocatorFile& file, int64_t& relocationAddre
 		size_t index = entry.index;
 		int size = section->getSize();
 
-		if (section->getType() == SHT_NOBITS)
-		{
-			// these sections should not be relocated...
-			relocationOffsets[index] = section->getAddress();
+		while (relocationAddress % 4)
+			relocationAddress++;
 
-		} else {
-			while (relocationAddress % 4)
-				relocationAddress++;
+		if (entry.label != nullptr)
+			entry.label->setValue(relocationAddress);
 
-			if (entry.label != nullptr)
-				entry.label->setValue(relocationAddress);
-
-			relocationOffsets[index] = relocationAddress;
-			relocationAddress += size;
-		}
+		relocationOffsets[index] = relocationAddress;
+		relocationAddress += size;
 	}
 
 	size_t dataStart = outputData.size();
@@ -21758,10 +21912,10 @@ void Allocations::clear()
 	keptPositions = false;
 }
 
-void Allocations::setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared)
+void Allocations::setArea(int64_t fileID, int64_t position, int64_t space, int64_t usage, bool usesFill, bool shared, int64_t physicalPosition)
 {
 	Key key{ fileID, position };
-	allocations[key] = Usage{ space, usage, usesFill, shared };
+	allocations[key] = Usage{ space, usage, usesFill, shared, physicalPosition };
 }
 
 void Allocations::forgetArea(int64_t fileID, int64_t position, int64_t space)
@@ -21866,18 +22020,28 @@ void Allocations::validateOverlap()
 {
 	// An easy mistake to make is a "subarea" where the parent area fills, and erases the subarea.
 	// Let's detect any sort of area overlap and report a warning.
+	// Areas can share virtual (RAM) address space on purpose. Dynamic/overlay
+	// segments reuse the same headersize/RAM window at different physical ROM
+	// offsets and are never resident at the same time. Only warn if the physical
+	// byte ranges actually collide.
 	Key lastKey{ -1, -1 };
 	int64_t lastEndPosition = -1;
 	Usage lastUsage{};
 
 	for (auto it : allocations) {
 		if (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition) {
-			// First, the obvious: does the content overlap?
-			if (it.first.position < lastKey.position + lastUsage.usage)
-				Logger::queueError(Logger::Warning, "Content of areas %08llX and %08llx overlap", lastKey.position, it.first.position);
-			// Next question, does the earlier one fill?
-			else if (it.second.usesFill && lastUsage.usesFill)
-				Logger::queueError(Logger::Warning, "Areas %08llX and %08llx overlap and both fill", lastKey.position, it.first.position);
+			int64_t lastPhysEnd = lastUsage.physicalPosition + lastUsage.usage;
+			int64_t newPhysEnd = it.second.physicalPosition + it.second.usage;
+			bool physicalOverlap = it.second.physicalPosition < lastPhysEnd && lastUsage.physicalPosition < newPhysEnd;
+
+			if (physicalOverlap) {
+				// First, the obvious: does the content overlap?
+				if (it.first.position < lastKey.position + lastUsage.usage)
+					Logger::queueError(Logger::Warning, "Content of areas %08llX and %08llx overlap", lastKey.position, it.first.position);
+				// Next question, does the earlier one fill?
+				else if (it.second.usesFill && lastUsage.usesFill)
+					Logger::queueError(Logger::Warning, "Areas %08llX and %08llx overlap and both fill", lastKey.position, it.first.position);
+			}
 
 			// If the new area ends before the last, keep it as the last.
 			if (lastEndPosition > it.first.position + it.second.space) {
@@ -21945,7 +22109,18 @@ void Allocations::collectAreaStats(AllocationStats &stats)
 
 	for (auto it : allocations)
 	{
-		if (it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition)
+		bool virtualOverlap = it.first.fileID == lastKey.fileID && it.first.position > lastKey.position && it.first.position < lastEndPosition;
+		bool physicalOverlap = false;
+		if (virtualOverlap)
+		{
+			int64_t lastPhysEnd = lastUsage.physicalPosition + lastUsage.usage;
+			int64_t newPhysEnd = it.second.physicalPosition + it.second.usage;
+			physicalOverlap = it.second.physicalPosition < lastPhysEnd && lastUsage.physicalPosition < newPhysEnd;
+		}
+
+		// Only merge dynamic/overlay areas that share RAM space if they also share
+		// physical ROM bytes, otherwise they are independent areas for stats purposes.
+		if (virtualOverlap && physicalOverlap)
 		{
 			// Overlap, merge.
 			int64_t lastUsageEnd = lastKey.position + lastUsage.usage;
